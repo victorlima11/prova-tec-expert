@@ -9,7 +9,7 @@ export interface WorkspaceMember {
   id: string
   workspace_id: string
   user_id: string
-  role: "owner" | "admin" | "member"
+  role: "admin" | "member"
   created_at: string
 }
 
@@ -53,6 +53,14 @@ export interface LeadCustomValue {
   created_at: string
 }
 
+export interface StageRequiredField {
+  id: string
+  workspace_id: string
+  stage_id: string
+  field_key: string
+  created_at: string
+}
+
 export interface Campaign {
   id: string
   workspace_id: string
@@ -61,5 +69,14 @@ export interface Campaign {
   prompt: string | null
   active: boolean
   trigger_stage_id: string | null
+  created_at: string
+}
+
+export interface GeneratedMessage {
+  id: string
+  workspace_id: string
+  lead_id: string
+  campaign_id: string | null
+  content: string
   created_at: string
 }
