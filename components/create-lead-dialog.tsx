@@ -5,7 +5,7 @@ import type React from "react"
 import { useState, useEffect } from "react"
 import { getSupabaseClient } from "@/lib/supabase/client"
 import { useWorkspace } from "@/lib/workspace-context"
-import type { PipelineStage } from "@/lib/types"
+import type { Campaign, PipelineStage, WorkspaceMember } from "@/lib/types"
 import {
   Dialog,
   DialogContent,
@@ -38,7 +38,10 @@ export function CreateLeadDialog({ open, onOpenChange, onSuccess }: CreateLeadDi
     source: "",
     notes: "",
     stage_id: "",
+    responsible_user_id: "none",
   })
+  const [workspaceUsers, setWorkspaceUsers] = useState<WorkspaceMember[]>([])
+  const [triggerCampaigns, setTriggerCampaigns] = useState<Campaign[]>([])
   const [loading, setLoading] = useState(false)
   const { currentWorkspaceId } = useWorkspace()
   const { toast } = useToast()
@@ -47,6 +50,8 @@ export function CreateLeadDialog({ open, onOpenChange, onSuccess }: CreateLeadDi
   useEffect(() => {
     if (open && currentWorkspaceId) {
       fetchStages()
+      fetchWorkspaceUsers()
+      fetchTriggerCampaigns()
     }
   }, [open, currentWorkspaceId])
 
@@ -67,16 +72,49 @@ export function CreateLeadDialog({ open, onOpenChange, onSuccess }: CreateLeadDi
     }
   }
 
+  const fetchWorkspaceUsers = async () => {
+    if (!currentWorkspaceId) return
+
+    const { data, error } = await supabase
+      .from("workspace_users")
+      .select("*")
+      .eq("workspace_id", currentWorkspaceId)
+      .order("created_at", { ascending: true })
+
+    if (!error && data) {
+      setWorkspaceUsers(data)
+    }
+  }
+
+  const fetchTriggerCampaigns = async () => {
+    if (!currentWorkspaceId) return
+
+    const { data, error } = await supabase
+      .from("campaigns")
+      .select("id, trigger_stage_id, active, name, workspace_id, context, prompt, created_at")
+      .eq("workspace_id", currentWorkspaceId)
+      .eq("active", true)
+
+    if (!error && data) {
+      setTriggerCampaigns(data)
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!currentWorkspaceId) return
 
     setLoading(true)
     try {
-      const { error } = await supabase.from("leads").insert({
-        workspace_id: currentWorkspaceId,
-        ...formData,
-      })
+      const { data, error } = await supabase
+        .from("leads")
+        .insert({
+          workspace_id: currentWorkspaceId,
+          ...formData,
+          responsible_user_id: formData.responsible_user_id === "none" ? null : formData.responsible_user_id,
+        })
+        .select("id, stage_id")
+        .single()
 
       if (error) throw error
 
@@ -84,6 +122,27 @@ export function CreateLeadDialog({ open, onOpenChange, onSuccess }: CreateLeadDi
         title: "Success",
         description: "Lead created successfully",
       })
+
+      if (data) {
+        const campaignsToTrigger = triggerCampaigns.filter((campaign) => campaign.trigger_stage_id === data.stage_id)
+        if (campaignsToTrigger.length > 0) {
+          const results = await Promise.all(
+            campaignsToTrigger.map((campaign) =>
+              supabase.functions.invoke("generate-messages", {
+                body: { lead_id: data.id, campaign_id: campaign.id },
+              }),
+            ),
+          )
+          const failed = results.find((result) => result.error)
+          if (failed?.error) {
+            toast({
+              title: "Aviso",
+              description: "Nao foi possivel gerar mensagens automaticamente.",
+              variant: "destructive",
+            })
+          }
+        }
+      }
 
       // Reset form
       setFormData({
@@ -95,6 +154,7 @@ export function CreateLeadDialog({ open, onOpenChange, onSuccess }: CreateLeadDi
         source: "",
         notes: "",
         stage_id: stages[0]?.id || "",
+        responsible_user_id: "none",
       })
       onOpenChange(false)
       onSuccess()
@@ -199,6 +259,25 @@ export function CreateLeadDialog({ open, onOpenChange, onSuccess }: CreateLeadDi
                 value={formData.notes}
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
               />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="responsible-user">Responsible User</Label>
+              <Select
+                value={formData.responsible_user_id}
+                onValueChange={(value) => setFormData({ ...formData, responsible_user_id: value })}
+              >
+                <SelectTrigger id="responsible-user">
+                  <SelectValue placeholder="Select a user" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Unassigned</SelectItem>
+                  {workspaceUsers.map((user) => (
+                    <SelectItem key={user.id} value={user.user_id}>
+                      {user.user_id.slice(0, 8)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <DialogFooter>

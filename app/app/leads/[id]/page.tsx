@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { getSupabaseClient } from "@/lib/supabase/client"
 import { useWorkspace } from "@/lib/workspace-context"
-import type { Lead, PipelineStage, LeadCustomField } from "@/lib/types"
+import type { Campaign, GeneratedMessage, Lead, LeadCustomField, PipelineStage, WorkspaceMember } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -21,9 +21,17 @@ interface LeadDetailPageProps {
 export default function LeadDetailPage({ params }: LeadDetailPageProps) {
   const { id } = params
   const [lead, setLead] = useState<Lead | null>(null)
+  const [initialStageId, setInitialStageId] = useState<string | null>(null)
   const [stages, setStages] = useState<PipelineStage[]>([])
   const [customFields, setCustomFields] = useState<LeadCustomField[]>([])
   const [customValues, setCustomValues] = useState<Record<string, string>>({})
+  const [workspaceUsers, setWorkspaceUsers] = useState<WorkspaceMember[]>([])
+  const [requiredFieldsByStage, setRequiredFieldsByStage] = useState<Record<string, string[]>>({})
+  const [campaigns, setCampaigns] = useState<Campaign[]>([])
+  const [selectedCampaignId, setSelectedCampaignId] = useState<string>("")
+  const [generatedMessages, setGeneratedMessages] = useState<GeneratedMessage[]>([])
+  const [generating, setGenerating] = useState(false)
+  const [sending, setSending] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const { currentWorkspaceId } = useWorkspace()
@@ -48,6 +56,7 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps) {
 
       if (leadError) throw leadError
       setLead(leadData)
+      setInitialStageId(leadData?.stage_id ?? null)
 
       // Fetch stages
       const { data: stagesData, error: stagesError } = await supabase
@@ -82,6 +91,50 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps) {
         valuesMap[v.field_id] = v.value || ""
       })
       setCustomValues(valuesMap)
+
+      const { data: requiredData, error: requiredError } = await supabase
+        .from("stage_required_fields")
+        .select("stage_id, field_key")
+        .eq("workspace_id", currentWorkspaceId)
+
+      if (requiredError) throw requiredError
+      const grouped: Record<string, string[]> = {}
+      requiredData?.forEach((row) => {
+        if (!grouped[row.stage_id]) grouped[row.stage_id] = []
+        grouped[row.stage_id].push(row.field_key)
+      })
+      setRequiredFieldsByStage(grouped)
+
+      const { data: usersData, error: usersError } = await supabase
+        .from("workspace_users")
+        .select("*")
+        .eq("workspace_id", currentWorkspaceId)
+        .order("created_at", { ascending: true })
+
+      if (usersError) throw usersError
+      setWorkspaceUsers(usersData || [])
+
+      const { data: campaignsData, error: campaignsError } = await supabase
+        .from("campaigns")
+        .select("*")
+        .eq("workspace_id", currentWorkspaceId)
+        .eq("active", true)
+        .order("created_at", { ascending: false })
+
+      if (campaignsError) throw campaignsError
+      setCampaigns(campaignsData || [])
+      if (campaignsData?.length && !selectedCampaignId) {
+        setSelectedCampaignId(campaignsData[0].id)
+      }
+
+      const { data: messagesData, error: messagesError } = await supabase
+        .from("generated_messages")
+        .select("*")
+        .eq("lead_id", id)
+        .order("created_at", { ascending: false })
+
+      if (messagesError) throw messagesError
+      setGeneratedMessages(messagesData || [])
     } catch (error: any) {
       toast({
         title: "Error",
@@ -96,12 +149,82 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps) {
   const handleSave = async () => {
     if (!lead) return
 
-    setSaving(true)
     try {
+      const requiredKeys = requiredFieldsByStage[lead.stage_id] || []
+      if (requiredKeys.length > 0) {
+        const standardLabelMap: Record<string, string> = {
+          name: "Nome",
+          email: "Email",
+          phone: "Telefone",
+          company: "Empresa",
+          job_title: "Cargo",
+          source: "Origem",
+          notes: "Observacoes",
+          responsible_user_id: "Responsavel",
+        }
+
+        const missing: string[] = []
+        const customFieldIds: string[] = []
+
+        requiredKeys.forEach((key) => {
+          if (key.startsWith("custom:")) {
+            customFieldIds.push(key.replace("custom:", ""))
+            return
+          }
+          const value = (lead as any)[key]
+          if (value === null || value === undefined || `${value}`.trim() === "") {
+            missing.push(standardLabelMap[key] || key)
+          }
+        })
+
+        if (customFieldIds.length > 0) {
+          customFieldIds.forEach((fieldId) => {
+            const value = customValues[fieldId]
+            if (!value || value.trim() === "") {
+              const fieldName = customFields.find((field) => field.id === fieldId)?.name
+              missing.push(fieldName ? `${fieldName} (Personalizado)` : `Campo ${fieldId}`)
+            }
+          })
+        }
+
+        if (missing.length > 0) {
+          toast({
+            title: "Campos obrigatorios faltando",
+            description: `Preencha: ${missing.join(", ")}`,
+            variant: "destructive",
+          })
+          return
+        }
+      }
+
+      setSaving(true)
+
       // Update lead basic fields
       const { error: leadError } = await supabase.from("leads").update(lead).eq("id", id)
 
       if (leadError) throw leadError
+
+      if (lead.stage_id && lead.stage_id !== initialStageId) {
+        const campaignsToTrigger = campaigns.filter((campaign) => campaign.trigger_stage_id === lead.stage_id)
+        if (campaignsToTrigger.length > 0) {
+          const results = await Promise.all(
+            campaignsToTrigger.map((campaign) =>
+              supabase.functions.invoke("generate-messages", {
+                body: { lead_id: id, campaign_id: campaign.id },
+              }),
+            ),
+          )
+          const failed = results.find((result) => result.error)
+          if (failed?.error) {
+            toast({
+              title: "Aviso",
+              description: "Nao foi possivel gerar mensagens automaticamente.",
+              variant: "destructive",
+            })
+          }
+        }
+        setInitialStageId(lead.stage_id)
+      }
 
       // Update custom values
       for (const fieldId in customValues) {
@@ -153,6 +276,78 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps) {
         description: error.message,
         variant: "destructive",
       })
+    }
+  }
+
+  const handleGenerateMessages = async () => {
+    if (!selectedCampaignId) {
+      toast({
+        title: "Selecione uma campanha",
+        description: "Escolha uma campanha ativa para gerar mensagens.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setGenerating(true)
+    try {
+      const { error } = await supabase.functions.invoke("generate-messages", {
+        body: {
+          lead_id: id,
+          campaign_id: selectedCampaignId,
+        },
+      })
+
+      if (error) throw error
+
+      const { data: messagesData, error: messagesError } = await supabase
+        .from("generated_messages")
+        .select("*")
+        .eq("lead_id", id)
+        .order("created_at", { ascending: false })
+
+      if (messagesError) throw messagesError
+      setGeneratedMessages(messagesData || [])
+
+      toast({
+        title: "Success",
+        description: "Mensagens geradas",
+      })
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      })
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  const handleSendMessage = async () => {
+    if (!lead) return
+
+    setSending(true)
+    try {
+      const targetStage = stages.find((stage) => stage.name.toLowerCase() === "tentando contato")
+      if (targetStage && lead.stage_id !== targetStage.id) {
+        const { error } = await supabase.from("leads").update({ stage_id: targetStage.id }).eq("id", id)
+        if (error) throw error
+        setLead({ ...lead, stage_id: targetStage.id })
+      }
+
+      toast({
+        title: "Success",
+        description: "Mensagem enviada (simulado). Lead movido para Tentando Contato.",
+      })
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      })
+    } finally {
+      setSending(false)
     }
   }
 
@@ -278,13 +473,24 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps) {
             </div>
             <div className="space-y-2">
               <Label htmlFor="responsible">Responsible User</Label>
-              <Input
-                id="responsible"
-                value="Not assigned"
-                disabled
-                className="text-muted-foreground"
-                placeholder="Coming soon"
-              />
+              <Select
+                value={lead.responsible_user_id ?? "none"}
+                onValueChange={(value) =>
+                  setLead({ ...lead, responsible_user_id: value === "none" ? null : value })
+                }
+              >
+                <SelectTrigger id="responsible">
+                  <SelectValue placeholder="Select a user" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Unassigned</SelectItem>
+                  {workspaceUsers.map((user) => (
+                    <SelectItem key={user.id} value={user.user_id}>
+                      {user.user_id.slice(0, 8)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </CardContent>
         </Card>
@@ -310,6 +516,54 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps) {
             </CardContent>
           </Card>
         )}
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Mensagens IA</CardTitle>
+            <CardDescription>Gere mensagens personalizadas para este lead</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
+              <div className="space-y-2">
+                <Label>Campanha ativa</Label>
+                <Select value={selectedCampaignId} onValueChange={(value) => setSelectedCampaignId(value)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione uma campanha" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {campaigns.map((campaign) => (
+                      <SelectItem key={campaign.id} value={campaign.id}>
+                        {campaign.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex gap-2">
+                <Button type="button" onClick={handleGenerateMessages} disabled={generating || !selectedCampaignId}>
+                  {generating ? "Gerando..." : "Gerar mensagens"}
+                </Button>
+                <Button type="button" variant="outline" onClick={handleSendMessage} disabled={sending}>
+                  {sending ? "Enviando..." : "Enviar (simulado)"}
+                </Button>
+              </div>
+            </div>
+
+            {generatedMessages.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Nenhuma mensagem gerada ainda.</p>
+            ) : (
+              <div className="space-y-3">
+                {generatedMessages.map((message) => (
+                  <Card key={message.id} className="border-dashed">
+                    <CardContent className="p-4">
+                      <p className="text-sm">{message.content}</p>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </div>
   )

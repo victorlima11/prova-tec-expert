@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { getSupabaseClient } from "@/lib/supabase/client"
 import { useWorkspace } from "@/lib/workspace-context"
-import type { Lead, PipelineStage } from "@/lib/types"
+import type { Campaign, Lead, LeadCustomField, PipelineStage } from "@/lib/types"
 import { getStageColor } from "@/lib/stage-colors"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -16,6 +16,9 @@ import { CreateLeadDialog } from "@/components/create-lead-dialog"
 export default function LeadsPage() {
   const [stages, setStages] = useState<PipelineStage[]>([])
   const [leads, setLeads] = useState<Lead[]>([])
+  const [customFields, setCustomFields] = useState<LeadCustomField[]>([])
+  const [requiredFieldsByStage, setRequiredFieldsByStage] = useState<Record<string, string[]>>({})
+  const [triggerCampaigns, setTriggerCampaigns] = useState<Campaign[]>([])
   const [loading, setLoading] = useState(true)
   const [movingLeadId, setMovingLeadId] = useState<string | null>(null)
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
@@ -55,6 +58,37 @@ export default function LeadsPage() {
 
       if (leadsError) throw leadsError
       setLeads(leadsData || [])
+
+      const { data: fieldsData, error: fieldsError } = await supabase
+        .from("lead_custom_fields")
+        .select("*")
+        .eq("workspace_id", currentWorkspaceId)
+        .order("created_at")
+
+      if (fieldsError) throw fieldsError
+      setCustomFields(fieldsData || [])
+
+      const { data: requiredData, error: requiredError } = await supabase
+        .from("stage_required_fields")
+        .select("stage_id, field_key")
+        .eq("workspace_id", currentWorkspaceId)
+
+      if (requiredError) throw requiredError
+      const grouped: Record<string, string[]> = {}
+      requiredData?.forEach((row) => {
+        if (!grouped[row.stage_id]) grouped[row.stage_id] = []
+        grouped[row.stage_id].push(row.field_key)
+      })
+      setRequiredFieldsByStage(grouped)
+
+      const { data: campaignsData, error: campaignsError } = await supabase
+        .from("campaigns")
+        .select("id, trigger_stage_id, active, name, workspace_id, context, prompt, created_at")
+        .eq("workspace_id", currentWorkspaceId)
+        .eq("active", true)
+
+      if (campaignsError) throw campaignsError
+      setTriggerCampaigns(campaignsData || [])
     } catch (error: any) {
       toast({
         title: "Error",
@@ -70,17 +104,100 @@ export default function LeadsPage() {
     return leads.filter((lead) => lead.stage_id === stageId)
   }
 
+  const getMissingRequiredFields = async (lead: Lead, stageId: string) => {
+    const requiredKeys = requiredFieldsByStage[stageId] || []
+    if (requiredKeys.length === 0) return []
+
+    const standardLabelMap: Record<string, string> = {
+      name: "Nome",
+      email: "Email",
+      phone: "Telefone",
+      company: "Empresa",
+      job_title: "Cargo",
+      source: "Origem",
+      notes: "Observacoes",
+      responsible_user_id: "Responsavel",
+    }
+
+    const missing: string[] = []
+    const customFieldIds: string[] = []
+
+    requiredKeys.forEach((key) => {
+      if (key.startsWith("custom:")) {
+        customFieldIds.push(key.replace("custom:", ""))
+        return
+      }
+
+      const value = (lead as any)[key]
+      if (value === null || value === undefined || `${value}`.trim() === "") {
+        missing.push(standardLabelMap[key] || key)
+      }
+    })
+
+    if (customFieldIds.length > 0) {
+      const { data, error } = await supabase
+        .from("lead_custom_values")
+        .select("field_id, value")
+        .eq("lead_id", lead.id)
+        .in("field_id", customFieldIds)
+
+      if (error) throw error
+
+      const valueMap = new Map<string, string | null>()
+      data?.forEach((item) => valueMap.set(item.field_id, item.value))
+
+      customFieldIds.forEach((fieldId) => {
+        const value = valueMap.get(fieldId)
+        if (value === null || value === undefined || value.trim() === "") {
+          const fieldName = customFields.find((field) => field.id === fieldId)?.name
+          missing.push(fieldName ? `${fieldName} (Personalizado)` : `Campo ${fieldId}`)
+        }
+      })
+    }
+
+    return missing
+  }
+
   const handleMoveLead = async (leadId: string, stageId: string) => {
     const targetLead = leads.find((lead) => lead.id === leadId)
     if (!targetLead || targetLead.stage_id === stageId) return
 
     setMovingLeadId(leadId)
     try {
+      const missingFields = await getMissingRequiredFields(targetLead, stageId)
+      if (missingFields.length > 0) {
+        toast({
+          title: "Campos obrigatorios faltando",
+          description: `Preencha: ${missingFields.join(", ")}`,
+          variant: "destructive",
+        })
+        return
+      }
+
       const { error } = await supabase.from("leads").update({ stage_id: stageId }).eq("id", leadId)
 
       if (error) throw error
 
       setLeads((prev) => prev.map((lead) => (lead.id === leadId ? { ...lead, stage_id: stageId } : lead)))
+
+      const campaignsToTrigger = triggerCampaigns.filter((campaign) => campaign.trigger_stage_id === stageId)
+      if (campaignsToTrigger.length > 0) {
+        const results = await Promise.all(
+          campaignsToTrigger.map((campaign) =>
+            supabase.functions.invoke("generate-messages", {
+              body: { lead_id: leadId, campaign_id: campaign.id },
+            }),
+          ),
+        )
+        const failed = results.find((result) => result.error)
+        if (failed?.error) {
+          toast({
+            title: "Aviso",
+            description: "Nao foi possivel gerar mensagens automaticamente.",
+            variant: "destructive",
+          })
+        }
+      }
     } catch (error: any) {
       toast({
         title: "Error",
