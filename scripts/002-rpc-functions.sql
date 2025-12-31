@@ -1,17 +1,3 @@
--- Helper: check if a user belongs to a workspace
-CREATE OR REPLACE FUNCTION is_workspace_member(p_workspace_id UUID, p_user_id UUID)
-RETURNS BOOLEAN
-LANGUAGE sql
-STABLE
-AS $$
-  SELECT EXISTS (
-    SELECT 1
-    FROM workspace_users
-    WHERE workspace_id = p_workspace_id
-      AND user_id = p_user_id
-  );
-$$;
-
 -- RPC function to create default pipeline stages
 CREATE OR REPLACE FUNCTION create_default_pipeline(p_workspace_id UUID)
 RETURNS VOID
@@ -23,10 +9,10 @@ BEGIN
     (p_workspace_id, 'Base', 1),
     (p_workspace_id, 'Lead Mapeado', 2),
     (p_workspace_id, 'Tentando Contato', 3),
-    (p_workspace_id, 'Conexão Iniciada', 4),
+    (p_workspace_id, 'Conexao Iniciada', 4),
     (p_workspace_id, 'Desqualificado', 5),
     (p_workspace_id, 'Qualificado', 6),
-    (p_workspace_id, 'Reunião Agendada', 7);
+    (p_workspace_id, 'Reuniao Agendada', 7);
 END;
 $$;
 

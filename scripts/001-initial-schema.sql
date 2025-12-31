@@ -1,6 +1,7 @@
 -- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
+
 -- Workspaces table
 CREATE TABLE IF NOT EXISTS workspaces (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -17,6 +18,23 @@ CREATE TABLE IF NOT EXISTS workspace_users (
   role TEXT NOT NULL DEFAULT 'member', -- 'admin', 'member'
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Helper: check if a user belongs to a workspace
+CREATE OR REPLACE FUNCTION is_workspace_member(p_workspace_id UUID, p_user_id UUID)
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+SET row_security = off
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM workspace_users
+    WHERE workspace_id = p_workspace_id
+      AND user_id = p_user_id
+  );
+$$;
 
 -- Pipeline stages table
 CREATE TABLE IF NOT EXISTS pipeline_stages (
