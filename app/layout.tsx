@@ -11,8 +11,8 @@ const _geist = Geist({ subsets: ["latin"] })
 const _geistMono = Geist_Mono({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "SDR Mini CRM",
-  description: "Sales development representative CRM for managing leads and campaigns",
+  title: "Mini CRM",
+  description: "Mini CRM para SDR com gestao de leads e campanhas",
   generator: "v0.app",
   icons: {
     icon: [

@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils"
 
 const menuItems = [
   {
-    title: "Dashboard",
+    title: "Painel",
     href: "/app/dashboard",
     icon: LayoutDashboard,
   },
@@ -17,12 +17,12 @@ const menuItems = [
     icon: Users,
   },
   {
-    title: "Campaigns",
+    title: "Campanhas",
     href: "/app/campaigns",
     icon: Megaphone,
   },
   {
-    title: "Settings",
+    title: "Configuracoes",
     href: "/app/settings",
     icon: Settings,
   },
@@ -32,9 +32,9 @@ export function AppSidebar() {
   const pathname = usePathname()
 
   return (
-    <aside className="fixed inset-y-0 left-0 z-10 hidden w-64 flex-col border-r bg-sidebar sm:flex">
-      <div className="flex h-16 items-center border-b px-6">
-        <h1 className="text-lg font-semibold text-sidebar-foreground">SDR Mini CRM</h1>
+    <aside className="fixed inset-y-0 left-0 z-10 hidden w-64 flex-col border-r border-border/70 bg-sidebar shadow-[0_20px_60px_-40px_rgba(15,23,42,0.35)] sm:flex">
+      <div className="flex h-16 items-center border-b border-border/70 px-6">
+        <h1 className="text-lg font-semibold tracking-tight text-sidebar-foreground">Mini CRM</h1>
       </div>
       <nav className="flex-1 space-y-1 p-4">
         {menuItems.map((item) => {
