@@ -33,24 +33,19 @@ O fluxo principal foi pensado para ser simples e direto:
 - Multi-tenant por workspace_id: todas as tabelas principais carregam esse campo e as consultas filtram por workspace.
 - RLS no Supabase: as políticas impedem acesso a dados de outro workspace.
 - Edge Function para IA: a geração de mensagens roda no backend e grava em generated_messages, evitando expor a chave do Gemini no frontend.
-- Gatilho de campanhas no cliente: quando o lead entra na etapa gatilho, a geração é disparada via Edge Function. É simples de entender e funciona bem para o MVP.
-- Soft delete de workspaces: arquivamento evita problemas de FK e impede apagar dados acidentalmente.
-- Workspace atual em localStorage: melhora a experiência e evita pedir seleção a cada reload.
+- Gatilho de campanhas no cliente: quando o lead entra na etapa gatilho, a geração é disparada via Edge Function.
+- Soft delete de workspaces: arquivamento e impede apagar dados acidentalmente.
+- Workspace atual em localStorage: melhora a experiência e evita pedir seleção a cada reload. (Parecido com cache)
 
 ## Stack
 
-- Next.js (App Router)
+- Next.js
 - TypeScript
 - Tailwind CSS + shadcn/ui
 - Supabase (Postgres + Auth + Edge Functions)
 - Google Gemini (via Edge Function)
 
 ## Como rodar localmente
-
-### Requisitos
-
-- Node.js 18+
-- Projeto no Supabase
 
 ### Variáveis de ambiente (frontend)
 
@@ -89,7 +84,7 @@ Acesse http://localhost:3000.
 
 ## IA e Edge Function
 
-A função `generate-messages` fica em `supabase/functions/generate-messages`. Ela recebe `lead_id` e `campaign_id`, monta o prompt com base no contexto da campanha e nos dados do lead, chama o Gemini (`gemini-2.5-flash`) e grava as mensagens em `generated_messages`.
+A função `generate-messages` fica em `supabase/functions/generate-messages`. Ela recebe `lead_id` e `campaign_id`, monta o prompt com base no contexto da campanha e nos dados do lead, chama o Gemini e grava as mensagens em `generated_messages`.
 
 ## Estrutura do projeto (resumo)
 
