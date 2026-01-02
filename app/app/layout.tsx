@@ -19,7 +19,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <AppSidebar />
       <div className="flex flex-1 flex-col sm:pl-64">
         <AppTopbar />
-        <main className="flex-1 overflow-auto bg-muted/30 p-6">{children}</main>
+        <main className="flex-1 overflow-auto bg-gradient-to-br from-muted/50 via-background to-background p-6">
+          {children}
+        </main>
       </div>
     </div>
   )
