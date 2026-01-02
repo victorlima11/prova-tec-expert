@@ -55,6 +55,9 @@ export function CreateLeadDialog({ open, onOpenChange, onSuccess }: CreateLeadDi
   const { toast } = useToast()
   const supabase = getSupabaseClient()
 
+  const campaignOptions = formData.stage_id
+    ? campaigns.filter((campaign) => !campaign.trigger_stage_id || campaign.trigger_stage_id === formData.stage_id)
+    : campaigns
 
   useEffect(() => {
     if (open && currentWorkspaceId) {
@@ -67,6 +70,19 @@ export function CreateLeadDialog({ open, onOpenChange, onSuccess }: CreateLeadDi
       fetchTriggerCampaigns()
     }
   }, [open, currentWorkspaceId])
+
+  useEffect(() => {
+    if (!formData.stage_id) return
+
+    if (selectedCampaignId !== "none" && !campaignOptions.find((campaign) => campaign.id === selectedCampaignId)) {
+      setSelectedCampaignId(campaignOptions[0]?.id ?? "none")
+      return
+    }
+
+    if (selectedCampaignId === "none" && campaignOptions.length === 1) {
+      setSelectedCampaignId(campaignOptions[0].id)
+    }
+  }, [formData.stage_id, campaigns, selectedCampaignId, campaignOptions])
 
   const fetchStages = async () => {
     if (!currentWorkspaceId) return
@@ -256,7 +272,7 @@ export function CreateLeadDialog({ open, onOpenChange, onSuccess }: CreateLeadDi
         const campaignsToTrigger = triggerCampaigns.filter((campaign) => campaign.trigger_stage_id === data.stage_id)
         campaignsToTrigger.forEach((campaign) => campaignIds.add(campaign.id))
 
-        if (selectedCampaignId !== "none") {
+        if (selectedCampaignId !== "none" && campaignOptions.find((campaign) => campaign.id === selectedCampaignId)) {
           campaignIds.add(selectedCampaignId)
         }
 
@@ -419,7 +435,7 @@ export function CreateLeadDialog({ open, onOpenChange, onSuccess }: CreateLeadDi
                 ))}
               </div>
             )}
-            {campaigns.length > 0 && (
+            {campaignOptions.length > 0 && (
               <div className="space-y-2">
                 <Label>Campanha para mensagens (opcional)</Label>
                 <Select value={selectedCampaignId} onValueChange={setSelectedCampaignId}>
@@ -428,7 +444,7 @@ export function CreateLeadDialog({ open, onOpenChange, onSuccess }: CreateLeadDi
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">Nenhuma</SelectItem>
-                    {campaigns.map((campaign) => (
+                    {campaignOptions.map((campaign) => (
                       <SelectItem key={campaign.id} value={campaign.id}>
                         {campaign.name}
                       </SelectItem>

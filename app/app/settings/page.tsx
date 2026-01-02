@@ -159,7 +159,7 @@ export default function SettingsPage() {
 
       toast({
         title: "Sucesso",
-        description: "Campos obrigatorios atualizados",
+        description: "Campos obrigatórios atualizados",
       })
       fetchRequiredFields(selectedStageId)
     } catch (error: any) {
@@ -332,7 +332,7 @@ export default function SettingsPage() {
           </div>
 
           <Button onClick={saveRequiredFields} disabled={savingRequired || !selectedStageId}>
-            {savingRequired ? "Salvando..." : "Salvar campos obrigatorios"}
+            {savingRequired ? "Salvando..." : "Salvar campos obrigatórios"}
           </Button>
         </CardContent>
       </Card>
