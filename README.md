@@ -1,132 +1,111 @@
-# SDR Mini CRM MVP
+# Mini CRM
 
-A modern SaaS CRM application built for sales development representatives, featuring multi-workspace support, lead management, and campaign automation.
+Mini CRM para equipes de SDR, focado em organizar o funil e facilitar a abordagem. O app permite criar campanhas com contexto e prompt, gerar mensagens com IA e mover leads entre etapas com regras de validação.
 
-## Features
+## Visão geral
 
-- **Multi-Workspace Support**: Create and switch between multiple workspaces
-- **Authentication**: Secure email/password authentication with Supabase
-- **Lead Management**: Kanban-style board to manage leads through pipeline stages
-- **Custom Fields**: Add custom fields to leads for flexible data capture
-- **Campaigns**: Create and manage automated outreach campaigns
-- **Dashboard**: Real-time metrics and pipeline visualization
-- **Row Level Security**: Built-in RLS policies for data isolation
+O fluxo principal foi pensado para ser simples e direto:
 
-## Tech Stack
+1. O usuário cria conta e entra no sistema.
+2. Cria ou seleciona um workspace (empresa ou equipe).
+3. Configura campos personalizados e regras de etapa.
+4. Cria campanhas com contexto, prompt e etapa gatilho.
+5. Cadastra leads no kanban e move entre etapas.
+6. Dentro do lead, gera mensagens com IA, copia ou envia (simulado).
+7. Ao enviar, o lead vai para "Tentando Contato".
 
-- **Framework**: Next.js 16 (App Router)
-- **Language**: TypeScript
-- **Styling**: Tailwind CSS v4 + shadcn/ui
-- **Database**: Supabase (PostgreSQL + Auth)
-- **State Management**: React Context + localStorage
+## Funcionalidades
 
-## Getting Started
+- Autenticação com Supabase Auth
+- Multi-workspace com isolamento por workspace_id
+- Kanban de leads com etapas do funil
+- Campos personalizados por workspace
+- Regras de campos obrigatórios por etapa
+- Campanhas com contexto, prompt e etapa gatilho
+- Geração de mensagens via IA e envio simulado
+- Gatilho automático de campanhas ao mover/criar lead na etapa configurada
+- Filtros por campanha e busca textual no kanban
+- Dashboard com total de leads e distribuição por etapa
+- Soft delete de workspace (arquivamento)
 
-### Prerequisites
+## Decisões técnicas
+
+- Multi-tenant por workspace_id: todas as tabelas principais carregam esse campo e as consultas filtram por workspace.
+- RLS no Supabase: as políticas impedem acesso a dados de outro workspace.
+- Edge Function para IA: a geração de mensagens roda no backend e grava em generated_messages, evitando expor a chave do Gemini no frontend.
+- Gatilho de campanhas no cliente: quando o lead entra na etapa gatilho, a geração é disparada via Edge Function. É simples de entender e funciona bem para o MVP.
+- Soft delete de workspaces: arquivamento evita problemas de FK e impede apagar dados acidentalmente.
+- Workspace atual em localStorage: melhora a experiência e evita pedir seleção a cada reload.
+
+## Stack
+
+- Next.js (App Router)
+- TypeScript
+- Tailwind CSS + shadcn/ui
+- Supabase (Postgres + Auth + Edge Functions)
+- Google Gemini (via Edge Function)
+
+## Como rodar localmente
+
+### Requisitos
 
 - Node.js 18+
-- A Supabase project ([create one here](https://supabase.com))
+- Projeto no Supabase
 
-### Environment Variables
+### Variáveis de ambiente (frontend)
 
-Create a `.env.local` file in the root directory:
+Crie um arquivo `.env.local`:
 
-```env
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+```
+NEXT_PUBLIC_SUPABASE_URL=...
+NEXT_PUBLIC_SUPABASE_ANON_KEY=...
 NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL=http://localhost:3000
 ```
 
-### Database Setup
+### Secrets da Edge Function
 
-1. In your Supabase project, go to the SQL Editor
-2. Run the scripts in the `scripts` folder in order:
-   - `001-initial-schema.sql` - Creates tables and RLS policies
-   - `002-rpc-functions.sql` - Creates the workspace creation RPC function
+No painel do Supabase, adicione:
 
-### Installation
+```
+GEMINI_API_KEY=...
+```
 
-```bash
-# Install dependencies
+### Banco de dados
+
+Execute os scripts no SQL Editor do Supabase, na ordem:
+
+1. `scripts/001-initial-schema.sql`
+2. `scripts/002-rpc-functions.sql`
+5. `scripts/007-workspace-archive.sql` (obrigatório para o soft delete)
+
+### Subir o app
+
+```
 npm install
-
-# Run development server
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) to view the application.
+Acesse http://localhost:3000.
 
-## Project Structure
+## IA e Edge Function
+
+A função `generate-messages` fica em `supabase/functions/generate-messages`. Ela recebe `lead_id` e `campaign_id`, monta o prompt com base no contexto da campanha e nos dados do lead, chama o Gemini (`gemini-2.5-flash`) e grava as mensagens em `generated_messages`.
+
+## Estrutura do projeto (resumo)
 
 ```
-├── app/
-│   ├── auth/                 # Authentication pages
-│   ├── onboarding/          # Workspace selection/creation
-│   ├── app/                 # Main application (protected routes)
-│   │   ├── dashboard/       # Dashboard with metrics
-│   │   ├── leads/           # Lead kanban board & detail pages
-│   │   ├── campaigns/       # Campaign management
-│   │   └── settings/        # Settings page
-│   └── layout.tsx           # Root layout with providers
-├── components/              # Reusable React components
-│   ├── ui/                  # shadcn/ui components
-│   ├── app-sidebar.tsx      # Main navigation sidebar
-│   ├── app-topbar.tsx       # Top bar with workspace switcher
-│   └── ...                  # Feature-specific components
-├── lib/
-│   ├── supabase/            # Supabase client helpers
-│   ├── types.ts             # TypeScript interfaces
-│   └── workspace-context.tsx # Workspace state management
-├── scripts/                 # Database migration scripts
-└── proxy.ts                 # Auth middleware (Next.js 16)
+app/
+  auth/                # Login e cadastro
+  onboarding/          # Selecionar/criar workspace
+  app/                 # Área logada
+    dashboard/
+    leads/
+    campaigns/
+    settings/
+components/
+lib/
+  supabase/
+  types.ts
+scripts/
 ```
 
-## Key Concepts
-
-### Workspace Management
-
-- Users can create multiple workspaces
-- Current workspace is persisted in localStorage
-- All data queries are filtered by workspace_id
-- RLS policies ensure users only see their workspace data
-
-### Lead Pipeline
-
-- Leads move through customizable pipeline stages
-- Each workspace has default stages created automatically
-- Stage colors and sort order are customizable
-- Kanban board provides visual pipeline management
-
-### Custom Fields
-
-- Define custom fields per workspace
-- Support for text, number, date, and select field types
-- Values are stored separately for flexibility
-- Displayed dynamically on lead detail pages
-
-### Campaigns
-
-- Store campaign configurations (name, context, prompt)
-- Optional trigger stage for automation
-- Active/inactive status toggle
-- Ready for future AI integration
-
-## Security
-
-- Row Level Security (RLS) enforced on all tables
-- Users can only access workspaces they're members of
-- Authentication required for all protected routes
-- Secure session management via Supabase Auth
-
-## Future Enhancements
-
-- Drag-and-drop lead movement between stages
-- User invitations and team collaboration
-- AI-powered campaign message generation
-- Activity timeline and notes
-- Email integration
-- Reporting and analytics
-
-## License
-
-MIT
