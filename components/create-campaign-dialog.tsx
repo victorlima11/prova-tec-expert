@@ -57,8 +57,8 @@ export function CreateCampaignDialog({ open, onOpenChange, onSuccess, stages }: 
       if (error) throw error
 
       toast({
-        title: "Success",
-        description: "Campaign created successfully",
+        title: "Sucesso",
+        description: "Campanha criada com sucesso",
       })
 
       // Reset form
@@ -73,7 +73,7 @@ export function CreateCampaignDialog({ open, onOpenChange, onSuccess, stages }: 
       onSuccess()
     } catch (error: any) {
       toast({
-        title: "Error",
+        title: "Erro",
         description: error.message,
         variant: "destructive",
       })
@@ -86,13 +86,13 @@ export function CreateCampaignDialog({ open, onOpenChange, onSuccess, stages }: 
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Create New Campaign</DialogTitle>
-          <DialogDescription>Set up an automated outreach campaign for your leads</DialogDescription>
+          <DialogTitle>Criar nova campanha</DialogTitle>
+          <DialogDescription>Configure uma campanha de abordagem automatizada</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
           <div className="grid gap-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="name">Campaign Name *</Label>
+              <Label htmlFor="name">Nome da campanha *</Label>
               <Input
                 id="name"
                 value={formData.name}
@@ -101,16 +101,16 @@ export function CreateCampaignDialog({ open, onOpenChange, onSuccess, stages }: 
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="trigger">Trigger Stage (Optional)</Label>
+              <Label htmlFor="trigger">Etapa gatilho (opcional)</Label>
               <Select
                 value={formData.trigger_stage_id}
                 onValueChange={(value) => setFormData({ ...formData, trigger_stage_id: value })}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select a stage to trigger this campaign" />
+                  <SelectValue placeholder="Selecione a etapa gatilho" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">No trigger</SelectItem>
+                  <SelectItem value="none">Sem gatilho</SelectItem>
                   {stages.map((stage) => (
                     <SelectItem key={stage.id} value={stage.id}>
                       {stage.name}
@@ -120,12 +120,12 @@ export function CreateCampaignDialog({ open, onOpenChange, onSuccess, stages }: 
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="context">Context</Label>
+              <Label htmlFor="context">Contexto</Label>
               <Textarea
                 id="context"
                 value={formData.context}
                 onChange={(e) => setFormData({ ...formData, context: e.target.value })}
-                placeholder="Background information for this campaign"
+                placeholder="Informacoes de base para a campanha"
                 rows={3}
               />
             </div>
@@ -135,7 +135,7 @@ export function CreateCampaignDialog({ open, onOpenChange, onSuccess, stages }: 
                 id="prompt"
                 value={formData.prompt}
                 onChange={(e) => setFormData({ ...formData, prompt: e.target.value })}
-                placeholder="AI prompt template for generating messages"
+                placeholder="Instrucao para gerar mensagens"
                 rows={4}
               />
             </div>
@@ -145,15 +145,15 @@ export function CreateCampaignDialog({ open, onOpenChange, onSuccess, stages }: 
                 checked={formData.active}
                 onCheckedChange={(checked) => setFormData({ ...formData, active: checked })}
               />
-              <Label htmlFor="active">Active</Label>
+              <Label htmlFor="active">Ativa</Label>
             </div>
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
+              Cancelar
             </Button>
             <Button type="submit" disabled={loading}>
-              {loading ? "Creating..." : "Create Campaign"}
+              {loading ? "Criando..." : "Criar campanha"}
             </Button>
           </DialogFooter>
         </form>

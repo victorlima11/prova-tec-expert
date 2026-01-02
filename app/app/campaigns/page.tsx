@@ -57,7 +57,7 @@ export default function CampaignsPage() {
       setStages(stagesData || [])
     } catch (error: any) {
       toast({
-        title: "Error",
+        title: "Erro",
         description: error.message,
         variant: "destructive",
       })
@@ -67,7 +67,7 @@ export default function CampaignsPage() {
   }
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this campaign?")) return
+    if (!confirm("Tem certeza que deseja excluir esta campanha?")) return
 
     try {
       const { error } = await supabase.from("campaigns").delete().eq("id", id)
@@ -75,13 +75,13 @@ export default function CampaignsPage() {
       if (error) throw error
 
       toast({
-        title: "Success",
-        description: "Campaign deleted successfully",
+        title: "Sucesso",
+        description: "Campanha excluida com sucesso",
       })
       fetchData()
     } catch (error: any) {
       toast({
-        title: "Error",
+        title: "Erro",
         description: error.message,
         variant: "destructive",
       })
@@ -89,9 +89,9 @@ export default function CampaignsPage() {
   }
 
   const getTriggerStageName = (stageId: string | null) => {
-    if (!stageId) return "No trigger"
+    if (!stageId) return "Sem gatilho"
     const stage = stages.find((s) => s.id === stageId)
-    return stage?.name || "Unknown stage"
+    return stage?.name || "Etapa desconhecida"
   }
 
   if (!currentWorkspaceId) {
@@ -101,7 +101,7 @@ export default function CampaignsPage() {
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center">
-        <p className="text-muted-foreground">Loading campaigns...</p>
+        <p className="text-muted-foreground">Carregando campanhas...</p>
       </div>
     )
   }
@@ -110,22 +110,22 @@ export default function CampaignsPage() {
     <div className="flex h-full flex-col">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Campaigns</h1>
-          <p className="text-sm text-muted-foreground">Manage your automated outreach campaigns</p>
+          <h1 className="text-3xl font-semibold tracking-tight">Campanhas</h1>
+          <p className="text-sm text-muted-foreground">Gerencie campanhas de abordagem automatizada</p>
         </div>
         <Button onClick={() => setCreateDialogOpen(true)}>
           <Plus className="mr-2 h-4 w-4" />
-          Add Campaign
+          Nova campanha
         </Button>
       </div>
 
       {campaigns.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
-            <p className="mb-4 text-muted-foreground">No campaigns yet. Create your first one!</p>
+            <p className="mb-4 text-muted-foreground">Nenhuma campanha ainda. Crie a primeira!</p>
             <Button onClick={() => setCreateDialogOpen(true)}>
               <Plus className="mr-2 h-4 w-4" />
-              Create Campaign
+              Criar campanha
             </Button>
           </CardContent>
         </Card>
@@ -139,7 +139,7 @@ export default function CampaignsPage() {
                     <CardTitle className="text-lg">{campaign.name}</CardTitle>
                     <CardDescription className="mt-1">
                       <Badge variant={campaign.active ? "default" : "secondary"} className="mt-1">
-                        {campaign.active ? "Active" : "Inactive"}
+                        {campaign.active ? "Ativa" : "Inativa"}
                       </Badge>
                     </CardDescription>
                   </div>
@@ -155,12 +155,12 @@ export default function CampaignsPage() {
               </CardHeader>
               <CardContent className="space-y-2 text-sm">
                 <div>
-                  <span className="font-medium">Trigger: </span>
+                  <span className="font-medium">Gatilho: </span>
                   <span className="text-muted-foreground">{getTriggerStageName(campaign.trigger_stage_id)}</span>
                 </div>
                 {campaign.context && (
                   <div>
-                    <span className="font-medium">Context: </span>
+                    <span className="font-medium">Contexto: </span>
                     <p className="text-muted-foreground">{campaign.context.slice(0, 100)}...</p>
                   </div>
                 )}

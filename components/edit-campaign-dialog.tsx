@@ -67,15 +67,15 @@ export function EditCampaignDialog({ campaign, open, onOpenChange, onSuccess, st
       if (error) throw error
 
       toast({
-        title: "Success",
-        description: "Campaign updated successfully",
+        title: "Sucesso",
+        description: "Campanha atualizada com sucesso",
       })
 
       onOpenChange(false)
       onSuccess()
     } catch (error: any) {
       toast({
-        title: "Error",
+        title: "Erro",
         description: error.message,
         variant: "destructive",
       })
@@ -88,13 +88,13 @@ export function EditCampaignDialog({ campaign, open, onOpenChange, onSuccess, st
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Edit Campaign</DialogTitle>
-          <DialogDescription>Update your campaign settings</DialogDescription>
+          <DialogTitle>Editar campanha</DialogTitle>
+          <DialogDescription>Atualize as configuracoes da campanha</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
           <div className="grid gap-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="edit-name">Campaign Name *</Label>
+              <Label htmlFor="edit-name">Nome da campanha *</Label>
               <Input
                 id="edit-name"
                 value={formData.name}
@@ -103,16 +103,16 @@ export function EditCampaignDialog({ campaign, open, onOpenChange, onSuccess, st
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit-trigger">Trigger Stage (Optional)</Label>
+              <Label htmlFor="edit-trigger">Etapa gatilho (opcional)</Label>
               <Select
                 value={formData.trigger_stage_id}
                 onValueChange={(value) => setFormData({ ...formData, trigger_stage_id: value })}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select a stage to trigger this campaign" />
+                  <SelectValue placeholder="Selecione a etapa gatilho" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">No trigger</SelectItem>
+                  <SelectItem value="none">Sem gatilho</SelectItem>
                   {stages.map((stage) => (
                     <SelectItem key={stage.id} value={stage.id}>
                       {stage.name}
@@ -122,12 +122,12 @@ export function EditCampaignDialog({ campaign, open, onOpenChange, onSuccess, st
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit-context">Context</Label>
+              <Label htmlFor="edit-context">Contexto</Label>
               <Textarea
                 id="edit-context"
                 value={formData.context}
                 onChange={(e) => setFormData({ ...formData, context: e.target.value })}
-                placeholder="Background information for this campaign"
+                placeholder="Informacoes de base para a campanha"
                 rows={3}
               />
             </div>
@@ -137,7 +137,7 @@ export function EditCampaignDialog({ campaign, open, onOpenChange, onSuccess, st
                 id="edit-prompt"
                 value={formData.prompt}
                 onChange={(e) => setFormData({ ...formData, prompt: e.target.value })}
-                placeholder="AI prompt template for generating messages"
+                placeholder="Instrucao para gerar mensagens"
                 rows={4}
               />
             </div>
@@ -147,15 +147,15 @@ export function EditCampaignDialog({ campaign, open, onOpenChange, onSuccess, st
                 checked={formData.active}
                 onCheckedChange={(checked) => setFormData({ ...formData, active: checked })}
               />
-              <Label htmlFor="edit-active">Active</Label>
+              <Label htmlFor="edit-active">Ativa</Label>
             </div>
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
+              Cancelar
             </Button>
             <Button type="submit" disabled={loading}>
-              {loading ? "Saving..." : "Save Changes"}
+              {loading ? "Salvando..." : "Salvar alteracoes"}
             </Button>
           </DialogFooter>
         </form>

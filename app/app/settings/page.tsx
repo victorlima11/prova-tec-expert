@@ -68,7 +68,7 @@ export default function SettingsPage() {
       }
     } catch (error: any) {
       toast({
-        title: "Error",
+        title: "Erro",
         description: error.message,
         variant: "destructive",
       })
@@ -94,7 +94,7 @@ export default function SettingsPage() {
 
     if (error) {
       toast({
-        title: "Error",
+        title: "Erro",
         description: error.message,
         variant: "destructive",
       })
@@ -158,13 +158,13 @@ export default function SettingsPage() {
       }
 
       toast({
-        title: "Success",
+        title: "Sucesso",
         description: "Campos obrigatorios atualizados",
       })
       fetchRequiredFields(selectedStageId)
     } catch (error: any) {
       toast({
-        title: "Error",
+        title: "Erro",
         description: error.message,
         variant: "destructive",
       })
@@ -188,7 +188,7 @@ export default function SettingsPage() {
       if (error) throw error
 
       toast({
-        title: "Success",
+        title: "Sucesso",
         description: "Campo personalizado criado",
       })
       setNewFieldName("")
@@ -196,7 +196,7 @@ export default function SettingsPage() {
       fetchSettings()
     } catch (error: any) {
       toast({
-        title: "Error",
+        title: "Erro",
         description: error.message,
         variant: "destructive",
       })
@@ -214,13 +214,13 @@ export default function SettingsPage() {
       if (error) throw error
 
       toast({
-        title: "Success",
+        title: "Sucesso",
         description: "Campo removido",
       })
       fetchSettings()
     } catch (error: any) {
       toast({
-        title: "Error",
+        title: "Erro",
         description: error.message,
         variant: "destructive",
       })
@@ -238,13 +238,13 @@ export default function SettingsPage() {
   return (
     <div className="flex h-full flex-col gap-6">
       <div>
-        <h1 className="text-3xl font-bold">Settings</h1>
-        <p className="text-sm text-muted-foreground">Manage your workspace settings</p>
+        <h1 className="text-3xl font-semibold tracking-tight">Configuracoes</h1>
+        <p className="text-sm text-muted-foreground">Gerencie as configuracoes do workspace</p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Custom Fields</CardTitle>
+          <CardTitle>Campos personalizados</CardTitle>
           <CardDescription>Adicione campos personalizados para os leads do workspace</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
