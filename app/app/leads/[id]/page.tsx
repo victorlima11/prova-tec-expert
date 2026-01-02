@@ -1,9 +1,11 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useParams, useRouter } from "next/navigation"
 import { getSupabaseClient } from "@/lib/supabase/client"
+import { invokeGenerateMessages } from "@/lib/supabase/edge"
 import { useWorkspace } from "@/lib/workspace-context"
+import { useAuth } from "@/lib/auth-context"
 import type { Campaign, GeneratedMessage, Lead, LeadCustomField, PipelineStage, WorkspaceMember } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,15 +13,13 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { ArrowLeft, Save, Trash } from "lucide-react"
+import { ArrowLeft, Copy, Save, Trash } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
-interface LeadDetailPageProps {
-  params: { id: string }
-}
-
-export default function LeadDetailPage({ params }: LeadDetailPageProps) {
-  const { id } = params
+export default function LeadDetailPage() {
+  const params = useParams()
+  const idParam = params?.id
+  const id = Array.isArray(idParam) ? idParam[0] : idParam
   const [lead, setLead] = useState<Lead | null>(null)
   const [initialStageId, setInitialStageId] = useState<string | null>(null)
   const [stages, setStages] = useState<PipelineStage[]>([])
@@ -30,16 +30,23 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps) {
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [selectedCampaignId, setSelectedCampaignId] = useState<string>("")
   const [generatedMessages, setGeneratedMessages] = useState<GeneratedMessage[]>([])
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
+  const [editingContent, setEditingContent] = useState("")
+  const [savingMessage, setSavingMessage] = useState(false)
+  const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null)
   const [generating, setGenerating] = useState(false)
   const [sending, setSending] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const { currentWorkspaceId } = useWorkspace()
+  const { session } = useAuth()
   const router = useRouter()
   const { toast } = useToast()
   const supabase = getSupabaseClient()
 
+
   useEffect(() => {
+    if (!id) return
     if (!currentWorkspaceId) {
       router.push("/onboarding/workspace")
       return
@@ -49,6 +56,7 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps) {
 
   const fetchData = async () => {
     if (!currentWorkspaceId) return
+    if (!id) return
 
     try {
       // Fetch lead
@@ -137,7 +145,7 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps) {
       setGeneratedMessages(messagesData || [])
     } catch (error: any) {
       toast({
-        title: "Error",
+        title: "Erro",
         description: error.message,
         variant: "destructive",
       })
@@ -147,6 +155,7 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps) {
   }
 
   const handleSave = async () => {
+    if (!id) return
     if (!lead) return
 
     try {
@@ -207,15 +216,21 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps) {
       if (lead.stage_id && lead.stage_id !== initialStageId) {
         const campaignsToTrigger = campaigns.filter((campaign) => campaign.trigger_stage_id === lead.stage_id)
         if (campaignsToTrigger.length > 0) {
-          const results = await Promise.all(
+          if (!session?.access_token) {
+            toast({
+              title: "Sessao expirada",
+              description: "Faca login novamente para gerar mensagens.",
+              variant: "destructive",
+            })
+            return
+          }
+          const results = await Promise.allSettled(
             campaignsToTrigger.map((campaign) =>
-              supabase.functions.invoke("generate-messages", {
-                body: { lead_id: id, campaign_id: campaign.id },
-              }),
+              invokeGenerateMessages({ lead_id: id, campaign_id: campaign.id }, session.access_token),
             ),
           )
-          const failed = results.find((result) => result.error)
-          if (failed?.error) {
+          const failed = results.find((result) => result.status === "rejected")
+          if (failed) {
             toast({
               title: "Aviso",
               description: "Nao foi possivel gerar mensagens automaticamente.",
@@ -243,12 +258,12 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps) {
       }
 
       toast({
-        title: "Success",
-        description: "Lead updated successfully",
+        title: "Sucesso",
+        description: "Lead atualizado com sucesso",
       })
     } catch (error: any) {
       toast({
-        title: "Error",
+        title: "Erro",
         description: error.message,
         variant: "destructive",
       })
@@ -258,7 +273,8 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps) {
   }
 
   const handleDelete = async () => {
-    if (!confirm("Are you sure you want to delete this lead?")) return
+    if (!id) return
+    if (!confirm("Tem certeza que deseja excluir este lead?")) return
 
     try {
       const { error } = await supabase.from("leads").delete().eq("id", id)
@@ -266,13 +282,13 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps) {
       if (error) throw error
 
       toast({
-        title: "Success",
-        description: "Lead deleted successfully",
+        title: "Sucesso",
+        description: "Lead excluido com sucesso",
       })
       router.push("/app/leads")
     } catch (error: any) {
       toast({
-        title: "Error",
+        title: "Erro",
         description: error.message,
         variant: "destructive",
       })
@@ -280,6 +296,7 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps) {
   }
 
   const handleGenerateMessages = async () => {
+    if (!id) return
     if (!selectedCampaignId) {
       toast({
         title: "Selecione uma campanha",
@@ -291,14 +308,15 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps) {
 
     setGenerating(true)
     try {
-      const { error } = await supabase.functions.invoke("generate-messages", {
-        body: {
-          lead_id: id,
-          campaign_id: selectedCampaignId,
-        },
-      })
-
-      if (error) throw error
+      if (!session?.access_token) {
+        toast({
+          title: "Sessao expirada",
+          description: "Faca login novamente para gerar mensagens.",
+          variant: "destructive",
+        })
+        return
+      }
+      await invokeGenerateMessages({ lead_id: id, campaign_id: selectedCampaignId }, session.access_token)
 
       const { data: messagesData, error: messagesError } = await supabase
         .from("generated_messages")
@@ -310,12 +328,12 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps) {
       setGeneratedMessages(messagesData || [])
 
       toast({
-        title: "Success",
+        title: "Sucesso",
         description: "Mensagens geradas",
       })
     } catch (error: any) {
       toast({
-        title: "Error",
+        title: "Erro",
         description: error.message,
         variant: "destructive",
       })
@@ -324,7 +342,92 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps) {
     }
   }
 
+  const handleCopyMessage = async (content: string) => {
+    try {
+      await navigator.clipboard.writeText(content)
+      toast({
+        title: "Copiado",
+        description: "Mensagem copiada para a area de transferencia.",
+      })
+    } catch (error: any) {
+      toast({
+        title: "Erro",
+        description: "Nao foi possivel copiar a mensagem.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const startEditMessage = (message: GeneratedMessage) => {
+    setEditingMessageId(message.id)
+    setEditingContent(message.content)
+  }
+
+  const cancelEditMessage = () => {
+    setEditingMessageId(null)
+    setEditingContent("")
+  }
+
+  const handleSaveMessage = async (messageId: string) => {
+    if (!editingContent.trim()) return
+
+    setSavingMessage(true)
+    try {
+      const { error } = await supabase
+        .from("generated_messages")
+        .update({ content: editingContent.trim() })
+        .eq("id", messageId)
+
+      if (error) throw error
+
+      setGeneratedMessages((prev) =>
+        prev.map((message) => (message.id === messageId ? { ...message, content: editingContent.trim() } : message)),
+      )
+
+      toast({
+        title: "Sucesso",
+        description: "Mensagem atualizada",
+      })
+      cancelEditMessage()
+    } catch (error: any) {
+      toast({
+        title: "Erro",
+        description: error.message,
+        variant: "destructive",
+      })
+    } finally {
+      setSavingMessage(false)
+    }
+  }
+
+  const handleDeleteMessage = async (messageId: string) => {
+    if (!confirm("Tem certeza que deseja excluir esta mensagem?")) return
+
+    setDeletingMessageId(messageId)
+    try {
+      const { error } = await supabase.from("generated_messages").delete().eq("id", messageId)
+
+      if (error) throw error
+
+      setGeneratedMessages((prev) => prev.filter((message) => message.id !== messageId))
+
+      toast({
+        title: "Sucesso",
+        description: "Mensagem excluida",
+      })
+    } catch (error: any) {
+      toast({
+        title: "Erro",
+        description: error.message,
+        variant: "destructive",
+      })
+    } finally {
+      setDeletingMessageId(null)
+    }
+  }
+
   const handleSendMessage = async () => {
+    if (!id) return
     if (!lead) return
 
     setSending(true)
@@ -337,12 +440,12 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps) {
       }
 
       toast({
-        title: "Success",
+        title: "Sucesso",
         description: "Mensagem enviada (simulado). Lead movido para Tentando Contato.",
       })
     } catch (error: any) {
       toast({
-        title: "Error",
+        title: "Erro",
         description: error.message,
         variant: "destructive",
       })
@@ -358,7 +461,7 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps) {
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center">
-        <p className="text-muted-foreground">Loading lead...</p>
+        <p className="text-muted-foreground">Carregando lead...</p>
       </div>
     )
   }
@@ -366,7 +469,7 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps) {
   if (!lead) {
     return (
       <div className="flex h-full items-center justify-center">
-        <p className="text-muted-foreground">Lead not found</p>
+        <p className="text-muted-foreground">Lead nao encontrado</p>
       </div>
     )
   }
@@ -376,16 +479,16 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps) {
       <div className="mb-6 flex items-center justify-between">
         <Button variant="ghost" onClick={() => router.back()}>
           <ArrowLeft className="mr-2 h-4 w-4" />
-          Back
+          Voltar
         </Button>
         <div className="flex gap-2">
           <Button variant="destructive" onClick={handleDelete}>
             <Trash className="mr-2 h-4 w-4" />
-            Delete
+            Excluir
           </Button>
           <Button onClick={handleSave} disabled={saving}>
             <Save className="mr-2 h-4 w-4" />
-            {saving ? "Saving..." : "Save"}
+            {saving ? "Salvando..." : "Salvar"}
           </Button>
         </div>
       </div>
@@ -393,17 +496,17 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps) {
       <div className="space-y-6">
         <Card>
           <CardHeader>
-            <CardTitle>Basic Information</CardTitle>
-            <CardDescription>Core details about this lead</CardDescription>
+            <CardTitle>Informacoes basicas</CardTitle>
+            <CardDescription>Dados principais do lead</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="name">Name *</Label>
+                <Label htmlFor="name">Nome *</Label>
                 <Input id="name" value={lead.name} onChange={(e) => setLead({ ...lead, name: e.target.value })} />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="stage">Stage *</Label>
+                <Label htmlFor="stage">Etapa *</Label>
                 <Select value={lead.stage_id} onValueChange={(value) => setLead({ ...lead, stage_id: value })}>
                   <SelectTrigger>
                     <SelectValue />
@@ -429,7 +532,7 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps) {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="phone">Phone</Label>
+                <Label htmlFor="phone">Telefone</Label>
                 <Input
                   id="phone"
                   value={lead.phone || ""}
@@ -439,7 +542,7 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps) {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="company">Company</Label>
+                <Label htmlFor="company">Empresa</Label>
                 <Input
                   id="company"
                   value={lead.company || ""}
@@ -447,7 +550,7 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps) {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="job_title">Job Title</Label>
+                <Label htmlFor="job_title">Cargo</Label>
                 <Input
                   id="job_title"
                   value={lead.job_title || ""}
@@ -456,7 +559,7 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps) {
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="source">Source</Label>
+              <Label htmlFor="source">Origem</Label>
               <Input
                 id="source"
                 value={lead.source || ""}
@@ -464,7 +567,7 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps) {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="notes">Notes</Label>
+              <Label htmlFor="notes">Observacoes</Label>
               <Textarea
                 id="notes"
                 value={lead.notes || ""}
@@ -472,7 +575,7 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps) {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="responsible">Responsible User</Label>
+              <Label htmlFor="responsible">Responsavel</Label>
               <Select
                 value={lead.responsible_user_id ?? "none"}
                 onValueChange={(value) =>
@@ -480,10 +583,10 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps) {
                 }
               >
                 <SelectTrigger id="responsible">
-                  <SelectValue placeholder="Select a user" />
+                  <SelectValue placeholder="Selecione um usuario" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">Unassigned</SelectItem>
+                  <SelectItem value="none">Sem responsavel</SelectItem>
                   {workspaceUsers.map((user) => (
                     <SelectItem key={user.id} value={user.user_id}>
                       {user.user_id.slice(0, 8)}
@@ -498,8 +601,8 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps) {
         {customFields.length > 0 && (
           <Card>
             <CardHeader>
-              <CardTitle>Custom Fields</CardTitle>
-              <CardDescription>Additional information specific to your workflow</CardDescription>
+              <CardTitle>Campos personalizados</CardTitle>
+              <CardDescription>Informacoes adicionais do seu fluxo</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {customFields.map((field) => (
@@ -556,7 +659,60 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps) {
                 {generatedMessages.map((message) => (
                   <Card key={message.id} className="border-dashed">
                     <CardContent className="p-4">
-                      <p className="text-sm">{message.content}</p>
+                      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                        <div className="flex-1">
+                          {editingMessageId === message.id ? (
+                            <Textarea
+                              value={editingContent}
+                              onChange={(event) => setEditingContent(event.target.value)}
+                              rows={3}
+                            />
+                          ) : (
+                            <p className="text-sm">{message.content}</p>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {editingMessageId === message.id ? (
+                            <>
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={() => handleSaveMessage(message.id)}
+                                disabled={savingMessage}
+                              >
+                                {savingMessage ? "Salvando..." : "Salvar"}
+                              </Button>
+                              <Button type="button" variant="outline" size="sm" onClick={cancelEditMessage}>
+                                Cancelar
+                              </Button>
+                            </>
+                          ) : (
+                            <>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleCopyMessage(message.content)}
+                              >
+                                <Copy className="mr-2 h-4 w-4" />
+                                Copiar
+                              </Button>
+                              <Button type="button" variant="ghost" size="sm" onClick={() => startEditMessage(message)}>
+                                Editar
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleDeleteMessage(message.id)}
+                                disabled={deletingMessageId === message.id}
+                              >
+                                {deletingMessageId === message.id ? "Excluindo..." : "Excluir"}
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      </div>
                     </CardContent>
                   </Card>
                 ))}
