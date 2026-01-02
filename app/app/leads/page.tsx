@@ -3,13 +3,18 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { getSupabaseClient } from "@/lib/supabase/client"
+import { invokeGenerateMessages } from "@/lib/supabase/edge"
 import { useWorkspace } from "@/lib/workspace-context"
+import { useAuth } from "@/lib/auth-context"
 import type { Campaign, Lead, LeadCustomField, PipelineStage } from "@/lib/types"
 import { getStageColor } from "@/lib/stage-colors"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Plus } from "lucide-react"
+import { Plus, Search } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { CreateLeadDialog } from "@/components/create-lead-dialog"
 
@@ -18,14 +23,20 @@ export default function LeadsPage() {
   const [leads, setLeads] = useState<Lead[]>([])
   const [customFields, setCustomFields] = useState<LeadCustomField[]>([])
   const [requiredFieldsByStage, setRequiredFieldsByStage] = useState<Record<string, string[]>>({})
+  const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [triggerCampaigns, setTriggerCampaigns] = useState<Campaign[]>([])
+  const [campaignFilterId, setCampaignFilterId] = useState<string>("all")
+  const [campaignLeadIds, setCampaignLeadIds] = useState<Set<string> | null>(null)
+  const [searchQuery, setSearchQuery] = useState("")
   const [loading, setLoading] = useState(true)
   const [movingLeadId, setMovingLeadId] = useState<string | null>(null)
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const { currentWorkspaceId } = useWorkspace()
+  const { session } = useAuth()
   const router = useRouter()
   const { toast } = useToast()
   const supabase = getSupabaseClient()
+
 
   useEffect(() => {
     if (!currentWorkspaceId) {
@@ -85,13 +96,18 @@ export default function LeadsPage() {
         .from("campaigns")
         .select("id, trigger_stage_id, active, name, workspace_id, context, prompt, created_at")
         .eq("workspace_id", currentWorkspaceId)
-        .eq("active", true)
+        .order("created_at", { ascending: false })
 
       if (campaignsError) throw campaignsError
-      setTriggerCampaigns(campaignsData || [])
+      setCampaigns(campaignsData || [])
+      setTriggerCampaigns((campaignsData || []).filter((campaign) => campaign.active))
+
+      if (campaignFilterId !== "all") {
+        await fetchCampaignLeadIds(campaignFilterId)
+      }
     } catch (error: any) {
       toast({
-        title: "Error",
+        title: "Erro",
         description: error.message,
         variant: "destructive",
       })
@@ -101,7 +117,65 @@ export default function LeadsPage() {
   }
 
   const getLeadsByStage = (stageId: string) => {
-    return leads.filter((lead) => lead.stage_id === stageId)
+    return getFilteredLeads().filter((lead) => lead.stage_id === stageId)
+  }
+
+  const fetchCampaignLeadIds = async (campaignId: string) => {
+    if (!currentWorkspaceId) return
+
+    setCampaignLeadIds(new Set())
+
+    const { data, error } = await supabase
+      .from("generated_messages")
+      .select("lead_id")
+      .eq("workspace_id", currentWorkspaceId)
+      .eq("campaign_id", campaignId)
+
+    if (error) {
+      toast({
+        title: "Erro",
+        description: error.message,
+        variant: "destructive",
+      })
+      return
+    }
+
+    setCampaignLeadIds(new Set((data || []).map((row) => row.lead_id)))
+  }
+
+  useEffect(() => {
+    if (!currentWorkspaceId) return
+    if (campaignFilterId === "all") {
+      setCampaignLeadIds(null)
+      return
+    }
+    fetchCampaignLeadIds(campaignFilterId)
+  }, [campaignFilterId, currentWorkspaceId])
+
+  const getFilteredLeads = () => {
+    const query = searchQuery.trim().toLowerCase()
+    return leads.filter((lead) => {
+      if (campaignFilterId !== "all" && campaignLeadIds) {
+        if (!campaignLeadIds.has(lead.id)) return false
+      }
+
+      if (!query) return true
+
+      const haystack = [
+        lead.name,
+        lead.email,
+        lead.phone,
+        lead.company,
+        lead.job_title,
+        lead.source,
+        lead.notes,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+
+      return haystack.includes(query)
+    })
   }
 
   const getMissingRequiredFields = async (lead: Lead, stageId: string) => {
@@ -182,15 +256,21 @@ export default function LeadsPage() {
 
       const campaignsToTrigger = triggerCampaigns.filter((campaign) => campaign.trigger_stage_id === stageId)
       if (campaignsToTrigger.length > 0) {
-        const results = await Promise.all(
+        if (!session?.access_token) {
+          toast({
+            title: "Sessao expirada",
+            description: "Faca login novamente para gerar mensagens.",
+            variant: "destructive",
+          })
+          return
+        }
+        const results = await Promise.allSettled(
           campaignsToTrigger.map((campaign) =>
-            supabase.functions.invoke("generate-messages", {
-              body: { lead_id: leadId, campaign_id: campaign.id },
-            }),
+            invokeGenerateMessages({ lead_id: leadId, campaign_id: campaign.id }, session.access_token),
           ),
         )
-        const failed = results.find((result) => result.error)
-        if (failed?.error) {
+        const failed = results.find((result) => result.status === "rejected")
+        if (failed) {
           toast({
             title: "Aviso",
             description: "Nao foi possivel gerar mensagens automaticamente.",
@@ -198,9 +278,13 @@ export default function LeadsPage() {
           })
         }
       }
+
+      if (campaignFilterId !== "all") {
+        await fetchCampaignLeadIds(campaignFilterId)
+      }
     } catch (error: any) {
       toast({
-        title: "Error",
+        title: "Erro",
         description: error.message,
         variant: "destructive",
       })
@@ -216,7 +300,7 @@ export default function LeadsPage() {
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center">
-        <p className="text-muted-foreground">Loading leads...</p>
+        <p className="text-muted-foreground">Carregando leads...</p>
       </div>
     )
   }
@@ -225,13 +309,60 @@ export default function LeadsPage() {
     <div className="flex h-full flex-col">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Leads</h1>
-          <p className="text-sm text-muted-foreground">Manage your sales leads in a kanban board</p>
+          <h1 className="text-3xl font-semibold tracking-tight">Leads</h1>
+          <p className="text-sm text-muted-foreground">Gerencie seus leads em um kanban</p>
         </div>
         <Button onClick={() => setCreateDialogOpen(true)}>
           <Plus className="mr-2 h-4 w-4" />
-          Add Lead
+          Novo lead
         </Button>
+      </div>
+
+      <div className="mb-4 flex justify-start">
+        <div className="flex w-full flex-wrap items-center gap-2 rounded-xl border bg-background/70 px-3 py-2 shadow-sm md:w-fit">
+          <div className="flex w-full items-center gap-2 md:w-auto">
+            <Label htmlFor="lead-search" className="sr-only">
+              Buscar
+            </Label>
+            <div className="relative w-full md:w-64">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                id="lead-search"
+                placeholder="Buscar por nome, empresa ou email"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                className="h-9 w-full pl-8 text-sm"
+              />
+            </div>
+          </div>
+          <div className="flex w-full items-center gap-2 md:w-auto">
+            <Label className="sr-only">Campanha</Label>
+            <Select value={campaignFilterId} onValueChange={setCampaignFilterId}>
+              <SelectTrigger className="h-9 w-full text-sm md:w-44">
+                <SelectValue placeholder="Todas as campanhas" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas</SelectItem>
+                {campaigns.map((campaign) => (
+                  <SelectItem key={campaign.id} value={campaign.id}>
+                    {campaign.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              type="button"
+              variant="ghost"
+              className="h-9 px-3 text-xs"
+              onClick={() => {
+                setSearchQuery("")
+                setCampaignFilterId("all")
+              }}
+            >
+              Limpar
+            </Button>
+          </div>
+        </div>
       </div>
 
       <div className="flex-1 overflow-x-auto">
@@ -282,7 +413,7 @@ export default function LeadsPage() {
                           {lead.email && <p>{lead.email}</p>}
                         </div>
                         {movingLeadId === lead.id && (
-                          <p className="mt-2 text-xs text-muted-foreground">Moving...</p>
+                          <p className="mt-2 text-xs text-muted-foreground">Movendo...</p>
                         )}
                       </CardContent>
                     </Card>
