@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Checkbox } from "@/components/ui/checkbox"
 import { useToast } from "@/hooks/use-toast"
 
 interface CreateLeadDialogProps {
@@ -35,7 +36,7 @@ export function CreateLeadDialog({ open, onOpenChange, onSuccess }: CreateLeadDi
   const [customValues, setCustomValues] = useState<Record<string, string>>({})
   const [requiredFieldsByStage, setRequiredFieldsByStage] = useState<Record<string, string[]>>({})
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
-  const [selectedCampaignId, setSelectedCampaignId] = useState<string>("none")
+  const [selectedCampaignIds, setSelectedCampaignIds] = useState<string[]>([])
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -55,14 +56,10 @@ export function CreateLeadDialog({ open, onOpenChange, onSuccess }: CreateLeadDi
   const { toast } = useToast()
   const supabase = getSupabaseClient()
 
-  const campaignOptions = formData.stage_id
-    ? campaigns.filter((campaign) => !campaign.trigger_stage_id || campaign.trigger_stage_id === formData.stage_id)
-    : campaigns
-
   useEffect(() => {
     if (open && currentWorkspaceId) {
       setCustomValues({})
-      setSelectedCampaignId("none")
+      setSelectedCampaignIds([])
       fetchStages()
       fetchCustomFields()
       fetchRequiredFields()
@@ -70,19 +67,6 @@ export function CreateLeadDialog({ open, onOpenChange, onSuccess }: CreateLeadDi
       fetchTriggerCampaigns()
     }
   }, [open, currentWorkspaceId])
-
-  useEffect(() => {
-    if (!formData.stage_id) return
-
-    if (selectedCampaignId !== "none" && !campaignOptions.find((campaign) => campaign.id === selectedCampaignId)) {
-      setSelectedCampaignId(campaignOptions[0]?.id ?? "none")
-      return
-    }
-
-    if (selectedCampaignId === "none" && campaignOptions.length === 1) {
-      setSelectedCampaignId(campaignOptions[0].id)
-    }
-  }, [formData.stage_id, campaigns, selectedCampaignId, campaignOptions])
 
   const fetchStages = async () => {
     if (!currentWorkspaceId) return
@@ -215,6 +199,17 @@ export function CreateLeadDialog({ open, onOpenChange, onSuccess }: CreateLeadDi
     }
   }
 
+  const toggleCampaign = (campaignId: string) => {
+    setSelectedCampaignIds((prev) =>
+      prev.includes(campaignId) ? prev.filter((id) => id !== campaignId) : [...prev, campaignId],
+    )
+  }
+
+  const getStageLabel = (stageId: string | null) => {
+    if (!stageId) return "Sem gatilho"
+    return stages.find((stage) => stage.id === stageId)?.name ?? "Etapa desconhecida"
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!currentWorkspaceId) return
@@ -231,12 +226,19 @@ export function CreateLeadDialog({ open, onOpenChange, onSuccess }: CreateLeadDi
         return
       }
 
+      const triggerCampaignsForStage = triggerCampaigns.filter(
+        (campaign) => campaign.trigger_stage_id === formData.stage_id,
+      )
+      const associatedCampaignIds =
+        selectedCampaignIds.length > 0 ? selectedCampaignIds : triggerCampaignsForStage.map((campaign) => campaign.id)
+
       const { data, error } = await supabase
         .from("leads")
         .insert({
           workspace_id: currentWorkspaceId,
           ...formData,
           responsible_user_id: formData.responsible_user_id === "none" ? null : formData.responsible_user_id,
+          campaign_ids: associatedCampaignIds,
         })
         .select("id, stage_id")
         .single()
@@ -268,15 +270,10 @@ export function CreateLeadDialog({ open, onOpenChange, onSuccess }: CreateLeadDi
       })
 
       if (data) {
-        const campaignIds = new Set<string>()
-        const campaignsToTrigger = triggerCampaigns.filter((campaign) => campaign.trigger_stage_id === data.stage_id)
-        campaignsToTrigger.forEach((campaign) => campaignIds.add(campaign.id))
-
-        if (selectedCampaignId !== "none" && campaignOptions.find((campaign) => campaign.id === selectedCampaignId)) {
-          campaignIds.add(selectedCampaignId)
-        }
-
-        if (campaignIds.size > 0) {
+        const campaignsToTrigger = triggerCampaignsForStage.filter((campaign) =>
+          selectedCampaignIds.length > 0 ? selectedCampaignIds.includes(campaign.id) : true,
+        )
+        if (campaignsToTrigger.length > 0) {
           if (!session?.access_token) {
             toast({
               title: "Sessão expirada",
@@ -286,8 +283,8 @@ export function CreateLeadDialog({ open, onOpenChange, onSuccess }: CreateLeadDi
             return
           }
           const results = await Promise.allSettled(
-            Array.from(campaignIds).map((campaignId) =>
-              invokeGenerateMessages({ lead_id: data.id, campaign_id: campaignId }, session.access_token),
+            campaignsToTrigger.map((campaign) =>
+              invokeGenerateMessages({ lead_id: data.id, campaign_id: campaign.id }, session.access_token),
             ),
           )
           const failed = results.find((result) => result.status === "rejected")
@@ -314,7 +311,7 @@ export function CreateLeadDialog({ open, onOpenChange, onSuccess }: CreateLeadDi
         responsible_user_id: "none",
       })
       setCustomValues({})
-      setSelectedCampaignId("none")
+      setSelectedCampaignIds([])
       onOpenChange(false)
       onSuccess()
     } catch (error: any) {
@@ -435,24 +432,33 @@ export function CreateLeadDialog({ open, onOpenChange, onSuccess }: CreateLeadDi
                 ))}
               </div>
             )}
-            {campaignOptions.length > 0 && (
-              <div className="space-y-2">
-                <Label>Campanha para mensagens (opcional)</Label>
-                <Select value={selectedCampaignId} onValueChange={setSelectedCampaignId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione uma campanha" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Nenhuma</SelectItem>
-                    {campaignOptions.map((campaign) => (
-                      <SelectItem key={campaign.id} value={campaign.id}>
-                        {campaign.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+            <div className="space-y-2">
+              <Label>Campanhas associadas (opcional)</Label>
+              {campaigns.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Nenhuma campanha ativa disponível.</p>
+              ) : (
+                <div className="grid gap-2 rounded-lg border p-3">
+                  {campaigns.map((campaign) => {
+                    const checked = selectedCampaignIds.includes(campaign.id)
+                    return (
+                      <label key={campaign.id} className="flex cursor-pointer items-start gap-2">
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={() => toggleCampaign(campaign.id)}
+                          className="mt-0.5"
+                        />
+                        <span className="flex flex-col text-sm">
+                          <span className="font-medium text-foreground">{campaign.name}</span>
+                          <span className="text-xs text-muted-foreground">
+                            Gatilho: {getStageLabel(campaign.trigger_stage_id)}
+                          </span>
+                        </span>
+                      </label>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
             <div className="space-y-2">
               <Label htmlFor="responsible-user">Responsável</Label>
               <Select

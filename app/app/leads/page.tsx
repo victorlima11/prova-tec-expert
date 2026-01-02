@@ -26,7 +26,6 @@ export default function LeadsPage() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [triggerCampaigns, setTriggerCampaigns] = useState<Campaign[]>([])
   const [campaignFilterId, setCampaignFilterId] = useState<string>("all")
-  const [campaignLeadIds, setCampaignLeadIds] = useState<Set<string> | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [loading, setLoading] = useState(true)
   const [movingLeadId, setMovingLeadId] = useState<string | null>(null)
@@ -101,10 +100,6 @@ export default function LeadsPage() {
       if (campaignsError) throw campaignsError
       setCampaigns(campaignsData || [])
       setTriggerCampaigns((campaignsData || []).filter((campaign) => campaign.active))
-
-      if (campaignFilterId !== "all") {
-        await fetchCampaignLeadIds(campaignFilterId)
-      }
     } catch (error: any) {
       toast({
         title: "Erro",
@@ -120,43 +115,12 @@ export default function LeadsPage() {
     return getFilteredLeads().filter((lead) => lead.stage_id === stageId)
   }
 
-  const fetchCampaignLeadIds = async (campaignId: string) => {
-    if (!currentWorkspaceId) return
-
-    setCampaignLeadIds(new Set())
-
-    const { data, error } = await supabase
-      .from("generated_messages")
-      .select("lead_id")
-      .eq("workspace_id", currentWorkspaceId)
-      .eq("campaign_id", campaignId)
-
-    if (error) {
-      toast({
-        title: "Erro",
-        description: error.message,
-        variant: "destructive",
-      })
-      return
-    }
-
-    setCampaignLeadIds(new Set((data || []).map((row) => row.lead_id)))
-  }
-
-  useEffect(() => {
-    if (!currentWorkspaceId) return
-    if (campaignFilterId === "all") {
-      setCampaignLeadIds(null)
-      return
-    }
-    fetchCampaignLeadIds(campaignFilterId)
-  }, [campaignFilterId, currentWorkspaceId])
-
   const getFilteredLeads = () => {
     const query = searchQuery.trim().toLowerCase()
     return leads.filter((lead) => {
-      if (campaignFilterId !== "all" && campaignLeadIds) {
-        if (!campaignLeadIds.has(lead.id)) return false
+      if (campaignFilterId !== "all") {
+        const campaignIds = (lead.campaign_ids || []).filter(Boolean)
+        if (!campaignIds.includes(campaignFilterId)) return false
       }
 
       if (!query) return true
@@ -248,14 +212,31 @@ export default function LeadsPage() {
         return
       }
 
-      const { error } = await supabase.from("leads").update({ stage_id: stageId }).eq("id", leadId)
+      const leadCampaignIds = (targetLead.campaign_ids || []).filter(Boolean)
+      const campaignsToTrigger = triggerCampaigns.filter((campaign) => campaign.trigger_stage_id === stageId)
+      const campaignsForLead =
+        leadCampaignIds.length > 0
+          ? campaignsToTrigger.filter((campaign) => leadCampaignIds.includes(campaign.id))
+          : campaignsToTrigger
+
+      const updatePayload: Partial<Lead> = { stage_id: stageId }
+      let nextCampaignIds = leadCampaignIds
+      if (leadCampaignIds.length === 0 && campaignsToTrigger.length > 0) {
+        nextCampaignIds = campaignsToTrigger.map((campaign) => campaign.id)
+        updatePayload.campaign_ids = nextCampaignIds
+      }
+
+      const { error } = await supabase.from("leads").update(updatePayload).eq("id", leadId)
 
       if (error) throw error
 
-      setLeads((prev) => prev.map((lead) => (lead.id === leadId ? { ...lead, stage_id: stageId } : lead)))
+      setLeads((prev) =>
+        prev.map((lead) =>
+          lead.id === leadId ? { ...lead, stage_id: stageId, campaign_ids: nextCampaignIds } : lead,
+        ),
+      )
 
-      const campaignsToTrigger = triggerCampaigns.filter((campaign) => campaign.trigger_stage_id === stageId)
-      if (campaignsToTrigger.length > 0) {
+      if (campaignsForLead.length > 0) {
         if (!session?.access_token) {
           toast({
             title: "Sessão expirada",
@@ -265,7 +246,7 @@ export default function LeadsPage() {
           return
         }
         const results = await Promise.allSettled(
-          campaignsToTrigger.map((campaign) =>
+          campaignsForLead.map((campaign) =>
             invokeGenerateMessages({ lead_id: leadId, campaign_id: campaign.id }, session.access_token),
           ),
         )
@@ -279,9 +260,6 @@ export default function LeadsPage() {
         }
       }
 
-      if (campaignFilterId !== "all") {
-        await fetchCampaignLeadIds(campaignFilterId)
-      }
     } catch (error: any) {
       toast({
         title: "Erro",

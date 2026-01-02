@@ -26,6 +26,7 @@ export interface Lead {
   id: string
   workspace_id: string
   stage_id: string
+  campaign_ids?: string[] | null
   name: string
   email: string | null
   phone: string | null
