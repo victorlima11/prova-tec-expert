@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
 import { ArrowLeft, Copy, Save, Trash } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
@@ -44,6 +45,16 @@ export default function LeadDetailPage() {
   const { toast } = useToast()
   const supabase = getSupabaseClient()
 
+  const getAvailableCampaigns = (currentLead: Lead | null, allCampaigns: Campaign[]) => {
+    if (!currentLead) return []
+    const associatedIds = new Set((currentLead.campaign_ids || []).filter(Boolean))
+    if (associatedIds.size > 0) {
+      return allCampaigns.filter((campaign) => associatedIds.has(campaign.id))
+    }
+    return allCampaigns.filter(
+      (campaign) => !campaign.trigger_stage_id || campaign.trigger_stage_id === currentLead.stage_id,
+    )
+  }
 
   useEffect(() => {
     if (!id) return
@@ -56,19 +67,22 @@ export default function LeadDetailPage() {
 
   useEffect(() => {
     if (!lead) return
-    const stageCampaigns = campaigns.filter(
-      (campaign) => !campaign.trigger_stage_id || campaign.trigger_stage_id === lead.stage_id,
-    )
-
-    if (selectedCampaignId !== "none" && !stageCampaigns.find((campaign) => campaign.id === selectedCampaignId)) {
-      setSelectedCampaignId(stageCampaigns[0]?.id ?? "none")
+    const availableCampaigns = getAvailableCampaigns(lead, campaigns)
+    if (selectedCampaignId !== "none" && !availableCampaigns.find((campaign) => campaign.id === selectedCampaignId)) {
+      const latestMessageCampaignId = generatedMessages.find((message) => message.campaign_id)?.campaign_id || null
+      const nextCampaignId =
+        (latestMessageCampaignId &&
+          availableCampaigns.find((campaign) => campaign.id === latestMessageCampaignId)?.id) ||
+        availableCampaigns[0]?.id ||
+        "none"
+      setSelectedCampaignId(nextCampaignId)
       return
     }
 
-    if (selectedCampaignId === "none" && stageCampaigns.length === 1) {
-      setSelectedCampaignId(stageCampaigns[0].id)
+    if (selectedCampaignId === "none" && availableCampaigns.length === 1) {
+      setSelectedCampaignId(availableCampaigns[0].id)
     }
-  }, [lead, campaigns, selectedCampaignId])
+  }, [lead, campaigns, generatedMessages, selectedCampaignId])
 
   const fetchData = async () => {
     if (!currentWorkspaceId) return
@@ -79,7 +93,6 @@ export default function LeadDetailPage() {
       const { data: leadData, error: leadError } = await supabase.from("leads").select("*").eq("id", id).single()
 
       if (leadError) throw leadError
-      setLead(leadData)
       setInitialStageId(leadData?.stage_id ?? null)
 
       // Fetch stages
@@ -156,11 +169,22 @@ export default function LeadDetailPage() {
         .order("created_at", { ascending: false })
 
       if (messagesError) throw messagesError
-      const availableCampaigns = activeCampaigns.filter(
-        (campaign) => !campaign.trigger_stage_id || campaign.trigger_stage_id === leadData.stage_id,
+      const messageCampaignIds = Array.from(
+        new Set((messagesData || []).map((message) => message.campaign_id).filter((campaignId) => !!campaignId)),
       )
+      const normalizedCampaignIds =
+        leadData.campaign_ids && leadData.campaign_ids.length > 0 ? leadData.campaign_ids : messageCampaignIds
+      const nextLead = { ...leadData, campaign_ids: normalizedCampaignIds }
+      setLead(nextLead)
+
+      if ((leadData.campaign_ids || []).length === 0 && normalizedCampaignIds.length > 0) {
+        await supabase.from("leads").update({ campaign_ids: normalizedCampaignIds }).eq("id", id)
+      }
+
+      const availableCampaigns = getAvailableCampaigns(nextLead, activeCampaigns)
+      const latestMessageCampaignId = messagesData?.find((message) => message.campaign_id)?.campaign_id || null
       const defaultCampaignId =
-        availableCampaigns.find((campaign) => campaign.trigger_stage_id === leadData.stage_id)?.id ||
+        (latestMessageCampaignId && availableCampaigns.find((campaign) => campaign.id === latestMessageCampaignId)?.id) ||
         availableCampaigns[0]?.id ||
         "none"
 
@@ -232,12 +256,30 @@ export default function LeadDetailPage() {
       setSaving(true)
 
       // Update lead basic fields
-      const { error: leadError } = await supabase.from("leads").update(lead).eq("id", id)
+      const nextLead: Lead = { ...lead }
+      const associatedCampaignIds = (nextLead.campaign_ids || []).filter(Boolean)
+      if (associatedCampaignIds.length === 0) {
+        const stageCampaignIds = campaigns
+          .filter((campaign) => campaign.trigger_stage_id === nextLead.stage_id)
+          .map((campaign) => campaign.id)
+        if (stageCampaignIds.length > 0) {
+          nextLead.campaign_ids = stageCampaignIds
+        }
+      }
+
+      const { error: leadError } = await supabase.from("leads").update(nextLead).eq("id", id)
 
       if (leadError) throw leadError
 
-      if (lead.stage_id && lead.stage_id !== initialStageId) {
-        const campaignsToTrigger = campaigns.filter((campaign) => campaign.trigger_stage_id === lead.stage_id)
+      setLead(nextLead)
+
+      if (nextLead.stage_id && nextLead.stage_id !== initialStageId) {
+        const leadCampaignIds = new Set((nextLead.campaign_ids || []).filter(Boolean))
+        const campaignsToTrigger = campaigns.filter((campaign) => {
+          if (campaign.trigger_stage_id !== nextLead.stage_id) return false
+          if (leadCampaignIds.size === 0) return true
+          return leadCampaignIds.has(campaign.id)
+        })
         if (campaignsToTrigger.length > 0) {
           if (!session?.access_token) {
             toast({
@@ -261,7 +303,7 @@ export default function LeadDetailPage() {
             })
           }
         }
-        setInitialStageId(lead.stage_id)
+        setInitialStageId(nextLead.stage_id)
       }
 
       // Update custom values
@@ -333,11 +375,21 @@ export default function LeadDetailPage() {
     try {
       if (!session?.access_token) {
         toast({
-        title: "Sessão expirada",
-        description: "Faça login novamente para gerar mensagens.",
+          title: "Sessão expirada",
+          description: "Faça login novamente para gerar mensagens.",
           variant: "destructive",
         })
         return
+      }
+
+      if (lead) {
+        const currentIds = (lead.campaign_ids || []).filter(Boolean)
+        if (!currentIds.includes(selectedCampaignId)) {
+          const nextIds = [...currentIds, selectedCampaignId]
+          const { error: updateError } = await supabase.from("leads").update({ campaign_ids: nextIds }).eq("id", id)
+          if (updateError) throw updateError
+          setLead({ ...lead, campaign_ids: nextIds })
+        }
       }
       await invokeGenerateMessages({ lead_id: id, campaign_id: selectedCampaignId }, session.access_token)
 
@@ -363,6 +415,13 @@ export default function LeadDetailPage() {
     } finally {
       setGenerating(false)
     }
+  }
+
+  const toggleCampaign = (campaignId: string) => {
+    if (!lead) return
+    const current = (lead.campaign_ids || []).filter(Boolean)
+    const next = current.includes(campaignId) ? current.filter((id) => id !== campaignId) : [...current, campaignId]
+    setLead({ ...lead, campaign_ids: next })
   }
 
   const handleCopyMessage = async (content: string) => {
@@ -497,9 +556,7 @@ export default function LeadDetailPage() {
     )
   }
 
-  const availableCampaigns = campaigns.filter(
-    (campaign) => !campaign.trigger_stage_id || campaign.trigger_stage_id === lead.stage_id,
-  )
+  const availableCampaigns = getAvailableCampaigns(lead, campaigns)
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -653,6 +710,37 @@ export default function LeadDetailPage() {
             <CardDescription>Gere mensagens personalizadas para este lead</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label>Campanhas associadas</Label>
+              {campaigns.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Nenhuma campanha ativa disponível.</p>
+              ) : (
+                <div className="grid gap-2 rounded-lg border p-3">
+                  {campaigns.map((campaign) => {
+                    const checked = (lead.campaign_ids || []).includes(campaign.id)
+                    const stageLabel = campaign.trigger_stage_id
+                      ? stages.find((stage) => stage.id === campaign.trigger_stage_id)?.name ?? "Etapa desconhecida"
+                      : "Sem gatilho"
+                    return (
+                      <label key={campaign.id} className="flex cursor-pointer items-start gap-2">
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={() => toggleCampaign(campaign.id)}
+                          className="mt-0.5"
+                        />
+                        <span className="flex flex-col text-sm">
+                          <span className="font-medium text-foreground">{campaign.name}</span>
+                          <span className="text-xs text-muted-foreground">Gatilho: {stageLabel}</span>
+                        </span>
+                      </label>
+                    )
+                  })}
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">
+                As campanhas associadas definem quais gatilhos automáticos serão usados.
+              </p>
+            </div>
             <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
               <div className="space-y-2">
                 <Label>Campanha ativa</Label>
