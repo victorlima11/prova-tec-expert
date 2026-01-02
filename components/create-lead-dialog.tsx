@@ -4,8 +4,10 @@ import type React from "react"
 
 import { useState, useEffect } from "react"
 import { getSupabaseClient } from "@/lib/supabase/client"
+import { invokeGenerateMessages } from "@/lib/supabase/edge"
 import { useWorkspace } from "@/lib/workspace-context"
-import type { Campaign, PipelineStage, WorkspaceMember } from "@/lib/types"
+import { useAuth } from "@/lib/auth-context"
+import type { Campaign, LeadCustomField, PipelineStage, WorkspaceMember } from "@/lib/types"
 import {
   Dialog,
   DialogContent,
@@ -29,6 +31,9 @@ interface CreateLeadDialogProps {
 
 export function CreateLeadDialog({ open, onOpenChange, onSuccess }: CreateLeadDialogProps) {
   const [stages, setStages] = useState<PipelineStage[]>([])
+  const [customFields, setCustomFields] = useState<LeadCustomField[]>([])
+  const [customValues, setCustomValues] = useState<Record<string, string>>({})
+  const [requiredFieldsByStage, setRequiredFieldsByStage] = useState<Record<string, string[]>>({})
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -44,12 +49,17 @@ export function CreateLeadDialog({ open, onOpenChange, onSuccess }: CreateLeadDi
   const [triggerCampaigns, setTriggerCampaigns] = useState<Campaign[]>([])
   const [loading, setLoading] = useState(false)
   const { currentWorkspaceId } = useWorkspace()
+  const { session } = useAuth()
   const { toast } = useToast()
   const supabase = getSupabaseClient()
 
+
   useEffect(() => {
     if (open && currentWorkspaceId) {
+      setCustomValues({})
       fetchStages()
+      fetchCustomFields()
+      fetchRequiredFields()
       fetchWorkspaceUsers()
       fetchTriggerCampaigns()
     }
@@ -86,6 +96,91 @@ export function CreateLeadDialog({ open, onOpenChange, onSuccess }: CreateLeadDi
     }
   }
 
+  const fetchCustomFields = async () => {
+    if (!currentWorkspaceId) return
+
+    const { data, error } = await supabase
+      .from("lead_custom_fields")
+      .select("*")
+      .eq("workspace_id", currentWorkspaceId)
+      .order("created_at")
+
+    if (!error && data) {
+      setCustomFields(data)
+    }
+  }
+
+  const fetchRequiredFields = async () => {
+    if (!currentWorkspaceId) return
+
+    const { data, error } = await supabase
+      .from("stage_required_fields")
+      .select("stage_id, field_key")
+      .eq("workspace_id", currentWorkspaceId)
+
+    if (!error && data) {
+      const grouped: Record<string, string[]> = {}
+      data.forEach((row) => {
+        if (!grouped[row.stage_id]) grouped[row.stage_id] = []
+        grouped[row.stage_id].push(row.field_key)
+      })
+      setRequiredFieldsByStage(grouped)
+    }
+  }
+
+  const getMissingRequiredFields = () => {
+    const stageId = formData.stage_id
+    if (!stageId) return []
+
+    const requiredKeys = requiredFieldsByStage[stageId] || []
+    if (requiredKeys.length === 0) return []
+
+    const standardLabelMap: Record<string, string> = {
+      name: "Nome",
+      email: "Email",
+      phone: "Telefone",
+      company: "Empresa",
+      job_title: "Cargo",
+      source: "Origem",
+      notes: "Observacoes",
+      responsible_user_id: "Responsavel",
+    }
+
+    const missing: string[] = []
+    const customFieldIds: string[] = []
+
+    requiredKeys.forEach((key) => {
+      if (key.startsWith("custom:")) {
+        customFieldIds.push(key.replace("custom:", ""))
+        return
+      }
+
+      const value = (formData as any)[key]
+      if (key === "responsible_user_id") {
+        if (!value || value === "none") {
+          missing.push(standardLabelMap[key] || key)
+        }
+        return
+      }
+
+      if (value === null || value === undefined || `${value}`.trim() === "") {
+        missing.push(standardLabelMap[key] || key)
+      }
+    })
+
+    if (customFieldIds.length > 0) {
+      customFieldIds.forEach((fieldId) => {
+        const value = customValues[fieldId]
+        if (!value || value.trim() === "") {
+          const fieldName = customFields.find((field) => field.id === fieldId)?.name
+          missing.push(fieldName ? `${fieldName} (Personalizado)` : `Campo ${fieldId}`)
+        }
+      })
+    }
+
+    return missing
+  }
+
   const fetchTriggerCampaigns = async () => {
     if (!currentWorkspaceId) return
 
@@ -106,6 +201,16 @@ export function CreateLeadDialog({ open, onOpenChange, onSuccess }: CreateLeadDi
 
     setLoading(true)
     try {
+      const missingFields = getMissingRequiredFields()
+      if (missingFields.length > 0) {
+      toast({
+        title: "Campos obrigatorios faltando",
+        description: `Preencha: ${missingFields.join(", ")}`,
+        variant: "destructive",
+      })
+        return
+      }
+
       const { data, error } = await supabase
         .from("leads")
         .insert({
@@ -118,23 +223,48 @@ export function CreateLeadDialog({ open, onOpenChange, onSuccess }: CreateLeadDi
 
       if (error) throw error
 
+      if (data && customFields.length > 0) {
+        const customValueInserts = customFields
+          .map((field) => {
+            const value = customValues[field.id]
+            if (!value || value.trim() === "") return null
+            return {
+              lead_id: data.id,
+              field_id: field.id,
+              value,
+            }
+          })
+          .filter(Boolean)
+
+        if (customValueInserts.length > 0) {
+          const { error: customError } = await supabase.from("lead_custom_values").insert(customValueInserts)
+          if (customError) throw customError
+        }
+      }
+
       toast({
-        title: "Success",
-        description: "Lead created successfully",
+        title: "Sucesso",
+        description: "Lead criado com sucesso",
       })
 
       if (data) {
         const campaignsToTrigger = triggerCampaigns.filter((campaign) => campaign.trigger_stage_id === data.stage_id)
         if (campaignsToTrigger.length > 0) {
-          const results = await Promise.all(
+          if (!session?.access_token) {
+            toast({
+              title: "Sessao expirada",
+              description: "Faca login novamente para gerar mensagens.",
+              variant: "destructive",
+            })
+            return
+          }
+          const results = await Promise.allSettled(
             campaignsToTrigger.map((campaign) =>
-              supabase.functions.invoke("generate-messages", {
-                body: { lead_id: data.id, campaign_id: campaign.id },
-              }),
+              invokeGenerateMessages({ lead_id: data.id, campaign_id: campaign.id }, session.access_token),
             ),
           )
-          const failed = results.find((result) => result.error)
-          if (failed?.error) {
+          const failed = results.find((result) => result.status === "rejected")
+          if (failed) {
             toast({
               title: "Aviso",
               description: "Nao foi possivel gerar mensagens automaticamente.",
@@ -156,11 +286,12 @@ export function CreateLeadDialog({ open, onOpenChange, onSuccess }: CreateLeadDi
         stage_id: stages[0]?.id || "",
         responsible_user_id: "none",
       })
+      setCustomValues({})
       onOpenChange(false)
       onSuccess()
     } catch (error: any) {
       toast({
-        title: "Error",
+        title: "Erro",
         description: error.message,
         variant: "destructive",
       })
@@ -173,14 +304,14 @@ export function CreateLeadDialog({ open, onOpenChange, onSuccess }: CreateLeadDi
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Create New Lead</DialogTitle>
-          <DialogDescription>Add a new lead to your pipeline</DialogDescription>
+          <DialogTitle>Criar novo lead</DialogTitle>
+          <DialogDescription>Adicione um novo lead ao funil</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="name">Name *</Label>
+                <Label htmlFor="name">Nome *</Label>
                 <Input
                   id="name"
                   value={formData.name}
@@ -189,13 +320,13 @@ export function CreateLeadDialog({ open, onOpenChange, onSuccess }: CreateLeadDi
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="stage">Stage *</Label>
+                <Label htmlFor="stage">Etapa *</Label>
                 <Select
                   value={formData.stage_id}
                   onValueChange={(value) => setFormData({ ...formData, stage_id: value })}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select stage" />
+                    <SelectValue placeholder="Selecione a etapa" />
                   </SelectTrigger>
                   <SelectContent>
                     {stages.map((stage) => (
@@ -218,7 +349,7 @@ export function CreateLeadDialog({ open, onOpenChange, onSuccess }: CreateLeadDi
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="phone">Phone</Label>
+                <Label htmlFor="phone">Telefone</Label>
                 <Input
                   id="phone"
                   value={formData.phone}
@@ -228,7 +359,7 @@ export function CreateLeadDialog({ open, onOpenChange, onSuccess }: CreateLeadDi
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="company">Company</Label>
+                <Label htmlFor="company">Empresa</Label>
                 <Input
                   id="company"
                   value={formData.company}
@@ -236,7 +367,7 @@ export function CreateLeadDialog({ open, onOpenChange, onSuccess }: CreateLeadDi
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="job_title">Job Title</Label>
+                <Label htmlFor="job_title">Cargo</Label>
                 <Input
                   id="job_title"
                   value={formData.job_title}
@@ -245,7 +376,7 @@ export function CreateLeadDialog({ open, onOpenChange, onSuccess }: CreateLeadDi
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="source">Source</Label>
+              <Label htmlFor="source">Origem</Label>
               <Input
                 id="source"
                 value={formData.source}
@@ -253,24 +384,40 @@ export function CreateLeadDialog({ open, onOpenChange, onSuccess }: CreateLeadDi
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="notes">Notes</Label>
+              <Label htmlFor="notes">Observacoes</Label>
               <Textarea
                 id="notes"
                 value={formData.notes}
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
               />
             </div>
+            {customFields.length > 0 && (
+              <div className="space-y-4">
+                <Label>Campos personalizados</Label>
+                {customFields.map((field) => (
+                  <div key={field.id} className="space-y-2">
+                    <Label htmlFor={field.id}>{field.name}</Label>
+                    <Input
+                      id={field.id}
+                      type={field.field_type === "number" ? "number" : field.field_type === "date" ? "date" : "text"}
+                      value={customValues[field.id] || ""}
+                      onChange={(e) => setCustomValues({ ...customValues, [field.id]: e.target.value })}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
             <div className="space-y-2">
-              <Label htmlFor="responsible-user">Responsible User</Label>
+              <Label htmlFor="responsible-user">Responsavel</Label>
               <Select
                 value={formData.responsible_user_id}
                 onValueChange={(value) => setFormData({ ...formData, responsible_user_id: value })}
               >
                 <SelectTrigger id="responsible-user">
-                  <SelectValue placeholder="Select a user" />
+                  <SelectValue placeholder="Selecione um usuario" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">Unassigned</SelectItem>
+                  <SelectItem value="none">Sem responsavel</SelectItem>
                   {workspaceUsers.map((user) => (
                     <SelectItem key={user.id} value={user.user_id}>
                       {user.user_id.slice(0, 8)}
@@ -282,10 +429,10 @@ export function CreateLeadDialog({ open, onOpenChange, onSuccess }: CreateLeadDi
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
+              Cancelar
             </Button>
             <Button type="submit" disabled={loading}>
-              {loading ? "Creating..." : "Create Lead"}
+              {loading ? "Criando..." : "Criar lead"}
             </Button>
           </DialogFooter>
         </form>
