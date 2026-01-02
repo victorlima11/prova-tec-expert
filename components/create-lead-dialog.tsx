@@ -34,6 +34,8 @@ export function CreateLeadDialog({ open, onOpenChange, onSuccess }: CreateLeadDi
   const [customFields, setCustomFields] = useState<LeadCustomField[]>([])
   const [customValues, setCustomValues] = useState<Record<string, string>>({})
   const [requiredFieldsByStage, setRequiredFieldsByStage] = useState<Record<string, string[]>>({})
+  const [campaigns, setCampaigns] = useState<Campaign[]>([])
+  const [selectedCampaignId, setSelectedCampaignId] = useState<string>("none")
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -57,6 +59,7 @@ export function CreateLeadDialog({ open, onOpenChange, onSuccess }: CreateLeadDi
   useEffect(() => {
     if (open && currentWorkspaceId) {
       setCustomValues({})
+      setSelectedCampaignId("none")
       fetchStages()
       fetchCustomFields()
       fetchRequiredFields()
@@ -192,6 +195,7 @@ export function CreateLeadDialog({ open, onOpenChange, onSuccess }: CreateLeadDi
 
     if (!error && data) {
       setTriggerCampaigns(data)
+      setCampaigns(data)
     }
   }
 
@@ -203,11 +207,11 @@ export function CreateLeadDialog({ open, onOpenChange, onSuccess }: CreateLeadDi
     try {
       const missingFields = getMissingRequiredFields()
       if (missingFields.length > 0) {
-      toast({
-        title: "Campos obrigatorios faltando",
-        description: `Preencha: ${missingFields.join(", ")}`,
-        variant: "destructive",
-      })
+        toast({
+          title: "Campos obrigatórios faltando",
+          description: `Preencha: ${missingFields.join(", ")}`,
+          variant: "destructive",
+        })
         return
       }
 
@@ -248,8 +252,15 @@ export function CreateLeadDialog({ open, onOpenChange, onSuccess }: CreateLeadDi
       })
 
       if (data) {
+        const campaignIds = new Set<string>()
         const campaignsToTrigger = triggerCampaigns.filter((campaign) => campaign.trigger_stage_id === data.stage_id)
-        if (campaignsToTrigger.length > 0) {
+        campaignsToTrigger.forEach((campaign) => campaignIds.add(campaign.id))
+
+        if (selectedCampaignId !== "none") {
+          campaignIds.add(selectedCampaignId)
+        }
+
+        if (campaignIds.size > 0) {
           if (!session?.access_token) {
             toast({
               title: "Sessão expirada",
@@ -259,8 +270,8 @@ export function CreateLeadDialog({ open, onOpenChange, onSuccess }: CreateLeadDi
             return
           }
           const results = await Promise.allSettled(
-            campaignsToTrigger.map((campaign) =>
-              invokeGenerateMessages({ lead_id: data.id, campaign_id: campaign.id }, session.access_token),
+            Array.from(campaignIds).map((campaignId) =>
+              invokeGenerateMessages({ lead_id: data.id, campaign_id: campaignId }, session.access_token),
             ),
           )
           const failed = results.find((result) => result.status === "rejected")
@@ -287,6 +298,7 @@ export function CreateLeadDialog({ open, onOpenChange, onSuccess }: CreateLeadDi
         responsible_user_id: "none",
       })
       setCustomValues({})
+      setSelectedCampaignId("none")
       onOpenChange(false)
       onSuccess()
     } catch (error: any) {
@@ -405,6 +417,24 @@ export function CreateLeadDialog({ open, onOpenChange, onSuccess }: CreateLeadDi
                     />
                   </div>
                 ))}
+              </div>
+            )}
+            {campaigns.length > 0 && (
+              <div className="space-y-2">
+                <Label>Campanha para mensagens (opcional)</Label>
+                <Select value={selectedCampaignId} onValueChange={setSelectedCampaignId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione uma campanha" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Nenhuma</SelectItem>
+                    {campaigns.map((campaign) => (
+                      <SelectItem key={campaign.id} value={campaign.id}>
+                        {campaign.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             )}
             <div className="space-y-2">
