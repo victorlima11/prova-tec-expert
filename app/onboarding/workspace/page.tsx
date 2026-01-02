@@ -180,7 +180,7 @@ export default function WorkspaceOnboardingPage() {
       <Card className="w-full max-w-2xl">
         <CardHeader>
           <CardTitle className="text-2xl">Escolha ou crie um workspace</CardTitle>
-          <CardDescription>Selecione um workspace existente ou crie um novo para comecar</CardDescription>
+          <CardDescription>Selecione um workspace existente ou crie um novo para começar</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           {/* Create new workspace */}

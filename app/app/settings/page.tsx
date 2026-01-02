@@ -21,8 +21,8 @@ const standardFields = [
   { key: "company", label: "Empresa" },
   { key: "job_title", label: "Cargo" },
   { key: "source", label: "Origem" },
-  { key: "notes", label: "Observacoes" },
-  { key: "responsible_user_id", label: "Responsavel" },
+  { key: "notes", label: "Observações" },
+  { key: "responsible_user_id", label: "Responsável" },
 ]
 
 export default function SettingsPage() {
@@ -230,7 +230,7 @@ export default function SettingsPage() {
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center">
-        <p className="text-muted-foreground">Carregando configuracoes...</p>
+        <p className="text-muted-foreground">Carregando configurações...</p>
       </div>
     )
   }
@@ -238,8 +238,8 @@ export default function SettingsPage() {
   return (
     <div className="flex h-full flex-col gap-6">
       <div>
-        <h1 className="text-3xl font-semibold tracking-tight">Configuracoes</h1>
-        <p className="text-sm text-muted-foreground">Gerencie as configuracoes do workspace</p>
+        <h1 className="text-3xl font-semibold tracking-tight">Configurações</h1>
+        <p className="text-sm text-muted-foreground">Gerencie as configurações do workspace</p>
       </div>
 
       <Card>

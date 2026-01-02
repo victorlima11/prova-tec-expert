@@ -64,7 +64,7 @@ export function AppTopbar() {
     setCurrentWorkspaceId(workspaceId)
     toast({
       title: "Workspace alterado",
-      description: "Voce trocou de workspace com sucesso",
+      description: "Você trocou de workspace com sucesso",
     })
   }
 

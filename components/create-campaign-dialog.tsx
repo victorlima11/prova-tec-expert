@@ -125,7 +125,7 @@ export function CreateCampaignDialog({ open, onOpenChange, onSuccess, stages }: 
                 id="context"
                 value={formData.context}
                 onChange={(e) => setFormData({ ...formData, context: e.target.value })}
-                placeholder="Informacoes de base para a campanha"
+                placeholder="Informações de base para a campanha"
                 rows={3}
               />
             </div>
@@ -135,7 +135,7 @@ export function CreateCampaignDialog({ open, onOpenChange, onSuccess, stages }: 
                 id="prompt"
                 value={formData.prompt}
                 onChange={(e) => setFormData({ ...formData, prompt: e.target.value })}
-                placeholder="Instrucao para gerar mensagens"
+                placeholder="Instrução para gerar mensagens"
                 rows={4}
               />
             </div>

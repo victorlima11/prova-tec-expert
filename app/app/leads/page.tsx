@@ -189,8 +189,8 @@ export default function LeadsPage() {
       company: "Empresa",
       job_title: "Cargo",
       source: "Origem",
-      notes: "Observacoes",
-      responsible_user_id: "Responsavel",
+      notes: "Observações",
+      responsible_user_id: "Responsável",
     }
 
     const missing: string[] = []
@@ -241,7 +241,7 @@ export default function LeadsPage() {
       const missingFields = await getMissingRequiredFields(targetLead, stageId)
       if (missingFields.length > 0) {
         toast({
-          title: "Campos obrigatorios faltando",
+          title: "Campos obrigatórios faltando",
           description: `Preencha: ${missingFields.join(", ")}`,
           variant: "destructive",
         })
@@ -258,8 +258,8 @@ export default function LeadsPage() {
       if (campaignsToTrigger.length > 0) {
         if (!session?.access_token) {
           toast({
-            title: "Sessao expirada",
-            description: "Faca login novamente para gerar mensagens.",
+            title: "Sessão expirada",
+            description: "Faça login novamente para gerar mensagens.",
             variant: "destructive",
           })
           return
@@ -273,7 +273,7 @@ export default function LeadsPage() {
         if (failed) {
           toast({
             title: "Aviso",
-            description: "Nao foi possivel gerar mensagens automaticamente.",
+            description: "Não foi possível gerar mensagens automaticamente.",
             variant: "destructive",
           })
         }

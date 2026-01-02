@@ -76,7 +76,7 @@ export default function CampaignsPage() {
 
       toast({
         title: "Sucesso",
-        description: "Campanha excluida com sucesso",
+        description: "Campanha excluída com sucesso",
       })
       fetchData()
     } catch (error: any) {

@@ -142,8 +142,8 @@ export function CreateLeadDialog({ open, onOpenChange, onSuccess }: CreateLeadDi
       company: "Empresa",
       job_title: "Cargo",
       source: "Origem",
-      notes: "Observacoes",
-      responsible_user_id: "Responsavel",
+      notes: "Observações",
+      responsible_user_id: "Responsável",
     }
 
     const missing: string[] = []
@@ -252,8 +252,8 @@ export function CreateLeadDialog({ open, onOpenChange, onSuccess }: CreateLeadDi
         if (campaignsToTrigger.length > 0) {
           if (!session?.access_token) {
             toast({
-              title: "Sessao expirada",
-              description: "Faca login novamente para gerar mensagens.",
+              title: "Sessão expirada",
+              description: "Faça login novamente para gerar mensagens.",
               variant: "destructive",
             })
             return
@@ -267,7 +267,7 @@ export function CreateLeadDialog({ open, onOpenChange, onSuccess }: CreateLeadDi
           if (failed) {
             toast({
               title: "Aviso",
-              description: "Nao foi possivel gerar mensagens automaticamente.",
+              description: "Não foi possível gerar mensagens automaticamente.",
               variant: "destructive",
             })
           }
@@ -384,7 +384,7 @@ export function CreateLeadDialog({ open, onOpenChange, onSuccess }: CreateLeadDi
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="notes">Observacoes</Label>
+              <Label htmlFor="notes">Observações</Label>
               <Textarea
                 id="notes"
                 value={formData.notes}
@@ -408,16 +408,16 @@ export function CreateLeadDialog({ open, onOpenChange, onSuccess }: CreateLeadDi
               </div>
             )}
             <div className="space-y-2">
-              <Label htmlFor="responsible-user">Responsavel</Label>
+              <Label htmlFor="responsible-user">Responsável</Label>
               <Select
                 value={formData.responsible_user_id}
                 onValueChange={(value) => setFormData({ ...formData, responsible_user_id: value })}
               >
                 <SelectTrigger id="responsible-user">
-                  <SelectValue placeholder="Selecione um usuario" />
+                  <SelectValue placeholder="Selecione um usuário" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">Sem responsavel</SelectItem>
+                  <SelectItem value="none">Sem responsável</SelectItem>
                   {workspaceUsers.map((user) => (
                     <SelectItem key={user.id} value={user.user_id}>
                       {user.user_id.slice(0, 8)}

@@ -89,7 +89,7 @@ export function EditCampaignDialog({ campaign, open, onOpenChange, onSuccess, st
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>Editar campanha</DialogTitle>
-          <DialogDescription>Atualize as configuracoes da campanha</DialogDescription>
+          <DialogDescription>Atualize as configurações da campanha</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
           <div className="grid gap-4 py-4">
@@ -127,7 +127,7 @@ export function EditCampaignDialog({ campaign, open, onOpenChange, onSuccess, st
                 id="edit-context"
                 value={formData.context}
                 onChange={(e) => setFormData({ ...formData, context: e.target.value })}
-                placeholder="Informacoes de base para a campanha"
+                placeholder="Informações de base para a campanha"
                 rows={3}
               />
             </div>
@@ -137,7 +137,7 @@ export function EditCampaignDialog({ campaign, open, onOpenChange, onSuccess, st
                 id="edit-prompt"
                 value={formData.prompt}
                 onChange={(e) => setFormData({ ...formData, prompt: e.target.value })}
-                placeholder="Instrucao para gerar mensagens"
+                placeholder="Instrução para gerar mensagens"
                 rows={4}
               />
             </div>

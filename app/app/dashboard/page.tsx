@@ -133,12 +133,12 @@ export default function DashboardPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Distribuicao por etapa</CardTitle>
+          <CardTitle>Distribuição por etapa</CardTitle>
           <CardDescription>Visao consolidada dos leads no funil</CardDescription>
         </CardHeader>
         <CardContent>
           {totalLeads === 0 ? (
-            <p className="text-sm text-muted-foreground">Ainda nao ha leads para mostrar.</p>
+            <p className="text-sm text-muted-foreground">Ainda não há leads para mostrar.</p>
           ) : (
             <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
               <ChartContainer config={chartConfig} className="h-[260px] w-full">

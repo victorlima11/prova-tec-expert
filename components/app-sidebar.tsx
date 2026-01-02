@@ -22,7 +22,7 @@ const menuItems = [
     icon: Megaphone,
   },
   {
-    title: "Configuracoes",
+    title: "Configurações",
     href: "/app/settings",
     icon: Settings,
   },

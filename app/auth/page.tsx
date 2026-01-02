@@ -30,12 +30,12 @@ export default function AuthPage() {
   const sideTitle = isSignUp ? "Comece com o essencial" : "Retome o pipeline"
   const sideDescription = isSignUp
     ? "Monte sua base com campos personalizados e campanhas prontas."
-    : "Veja rapidamente o que precisa de atencao e mova leads no kanban."
+    : "Veja rapidamente o que precisa de atenção e mova leads no kanban."
   const sideItems = isSignUp
-    ? ["Crie um workspace e estagios", "Cadastre leads e campos personalizados", "Ative campanhas e gere mensagens"]
+    ? ["Crie um workspace e estágios", "Cadastre leads e campos personalizados", "Ative campanhas e gere mensagens"]
     : ["Visualize o kanban completo", "Aplique filtros por campanha e texto", "Gere mensagens com IA quando precisar"]
   const sideHint = isSignUp
-    ? "Dica: use seu email corporativo para facilitar o acesso do time."
+    ? "Dica: use seu e-mail corporativo para facilitar o acesso do time."
     : "Dica: use o filtro para achar leads e campanhas em segundos."
 
   const handleSignIn = async (e: React.FormEvent) => {
@@ -83,7 +83,7 @@ export default function AuthPage() {
 
       toast({
         title: "Sucesso",
-        description: "Conta criada! Verifique seu email para confirmar.",
+      description: "Conta criada! Verifique seu e-mail para confirmar.",
       })
       router.push("/onboarding/workspace")
     } catch (error: any) {

@@ -168,8 +168,8 @@ export default function LeadDetailPage() {
           company: "Empresa",
           job_title: "Cargo",
           source: "Origem",
-          notes: "Observacoes",
-          responsible_user_id: "Responsavel",
+          notes: "Observações",
+          responsible_user_id: "Responsável",
         }
 
         const missing: string[] = []
@@ -218,8 +218,8 @@ export default function LeadDetailPage() {
         if (campaignsToTrigger.length > 0) {
           if (!session?.access_token) {
             toast({
-              title: "Sessao expirada",
-              description: "Faca login novamente para gerar mensagens.",
+              title: "Sessão expirada",
+              description: "Faça login novamente para gerar mensagens.",
               variant: "destructive",
             })
             return
@@ -233,7 +233,7 @@ export default function LeadDetailPage() {
           if (failed) {
             toast({
               title: "Aviso",
-              description: "Nao foi possivel gerar mensagens automaticamente.",
+              description: "Não foi possível gerar mensagens automaticamente.",
               variant: "destructive",
             })
           }
@@ -283,7 +283,7 @@ export default function LeadDetailPage() {
 
       toast({
         title: "Sucesso",
-        description: "Lead excluido com sucesso",
+        description: "Lead excluído com sucesso",
       })
       router.push("/app/leads")
     } catch (error: any) {
@@ -310,8 +310,8 @@ export default function LeadDetailPage() {
     try {
       if (!session?.access_token) {
         toast({
-          title: "Sessao expirada",
-          description: "Faca login novamente para gerar mensagens.",
+        title: "Sessão expirada",
+        description: "Faça login novamente para gerar mensagens.",
           variant: "destructive",
         })
         return
@@ -347,12 +347,12 @@ export default function LeadDetailPage() {
       await navigator.clipboard.writeText(content)
       toast({
         title: "Copiado",
-        description: "Mensagem copiada para a area de transferencia.",
+        description: "Mensagem copiada para a área de transferência.",
       })
     } catch (error: any) {
       toast({
         title: "Erro",
-        description: "Nao foi possivel copiar a mensagem.",
+        description: "Não foi possível copiar a mensagem.",
         variant: "destructive",
       })
     }
@@ -413,7 +413,7 @@ export default function LeadDetailPage() {
 
       toast({
         title: "Sucesso",
-        description: "Mensagem excluida",
+        description: "Mensagem excluída",
       })
     } catch (error: any) {
       toast({
@@ -469,7 +469,7 @@ export default function LeadDetailPage() {
   if (!lead) {
     return (
       <div className="flex h-full items-center justify-center">
-        <p className="text-muted-foreground">Lead nao encontrado</p>
+        <p className="text-muted-foreground">Lead não encontrado</p>
       </div>
     )
   }
@@ -496,7 +496,7 @@ export default function LeadDetailPage() {
       <div className="space-y-6">
         <Card>
           <CardHeader>
-            <CardTitle>Informacoes basicas</CardTitle>
+            <CardTitle>Informações básicas</CardTitle>
             <CardDescription>Dados principais do lead</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -567,7 +567,7 @@ export default function LeadDetailPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="notes">Observacoes</Label>
+              <Label htmlFor="notes">Observações</Label>
               <Textarea
                 id="notes"
                 value={lead.notes || ""}
@@ -575,7 +575,7 @@ export default function LeadDetailPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="responsible">Responsavel</Label>
+              <Label htmlFor="responsible">Responsável</Label>
               <Select
                 value={lead.responsible_user_id ?? "none"}
                 onValueChange={(value) =>
@@ -583,10 +583,10 @@ export default function LeadDetailPage() {
                 }
               >
                 <SelectTrigger id="responsible">
-                  <SelectValue placeholder="Selecione um usuario" />
+                  <SelectValue placeholder="Selecione um usuário" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">Sem responsavel</SelectItem>
+                  <SelectItem value="none">Sem responsável</SelectItem>
                   {workspaceUsers.map((user) => (
                     <SelectItem key={user.id} value={user.user_id}>
                       {user.user_id.slice(0, 8)}
@@ -602,7 +602,7 @@ export default function LeadDetailPage() {
           <Card>
             <CardHeader>
               <CardTitle>Campos personalizados</CardTitle>
-              <CardDescription>Informacoes adicionais do seu fluxo</CardDescription>
+              <CardDescription>Informações adicionais do seu fluxo</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {customFields.map((field) => (
