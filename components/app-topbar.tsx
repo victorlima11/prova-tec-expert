@@ -40,10 +40,17 @@ export function AppTopbar() {
   }, [currentWorkspaceId, workspaces])
 
   const fetchWorkspaces = async () => {
-    const { data, error } = await supabase.from("workspaces").select("*").order("created_at", { ascending: false })
+    const { data, error } = await supabase
+      .from("workspaces")
+      .select("*")
+      .is("archived_at", null)
+      .order("created_at", { ascending: false })
 
     if (!error && data) {
       setWorkspaces(data)
+      if (currentWorkspaceId && !data.find((workspace) => workspace.id === currentWorkspaceId)) {
+        setCurrentWorkspaceId(null)
+      }
     }
   }
 
@@ -56,13 +63,13 @@ export function AppTopbar() {
   const switchWorkspace = (workspaceId: string) => {
     setCurrentWorkspaceId(workspaceId)
     toast({
-      title: "Workspace switched",
-      description: "You have successfully switched workspaces",
+      title: "Workspace alterado",
+      description: "Voce trocou de workspace com sucesso",
     })
   }
 
   return (
-    <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b bg-background px-6">
+    <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b border-border/70 bg-background/80 px-6 backdrop-blur">
       <div className="flex items-center gap-4">
         {currentWorkspace && (
           <DropdownMenu>
@@ -74,7 +81,7 @@ export function AppTopbar() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-56">
-              <DropdownMenuLabel>Switch Workspace</DropdownMenuLabel>
+              <DropdownMenuLabel>Trocar workspace</DropdownMenuLabel>
               <DropdownMenuSeparator />
               {workspaces.map((workspace) => (
                 <DropdownMenuItem
@@ -87,7 +94,7 @@ export function AppTopbar() {
               ))}
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => router.push("/onboarding/workspace")}>
-                Create new workspace
+                Criar novo workspace
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -97,16 +104,16 @@ export function AppTopbar() {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="sm">
-              {user?.email ?? "Account"}
+              {user?.email ?? "Conta"}
               <ChevronDown className="ml-2 h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuLabel>My Account</DropdownMenuLabel>
+            <DropdownMenuLabel>Minha conta</DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleSignOut}>
               <LogOut className="mr-2 h-4 w-4" />
-              Sign Out
+              Sair
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

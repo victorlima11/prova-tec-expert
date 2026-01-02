@@ -3,6 +3,7 @@ export interface Workspace {
   name: string
   owner_id: string
   created_at: string
+  archived_at?: string | null
 }
 
 export interface WorkspaceMember {
