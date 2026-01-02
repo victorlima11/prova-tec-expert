@@ -5,7 +5,6 @@ import { useParams, useRouter } from "next/navigation"
 import { getSupabaseClient } from "@/lib/supabase/client"
 import { invokeGenerateMessages } from "@/lib/supabase/edge"
 import { useWorkspace } from "@/lib/workspace-context"
-import { useAuth } from "@/lib/auth-context"
 import type { Campaign, GeneratedMessage, Lead, LeadCustomField, PipelineStage, WorkspaceMember } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -40,7 +39,6 @@ export default function LeadDetailPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const { currentWorkspaceId } = useWorkspace()
-  const { session } = useAuth()
   const router = useRouter()
   const { toast } = useToast()
   const supabase = getSupabaseClient()
@@ -281,7 +279,9 @@ export default function LeadDetailPage() {
           return leadCampaignIds.has(campaign.id)
         })
         if (campaignsToTrigger.length > 0) {
-          if (!session?.access_token) {
+          const { data: sessionData } = await supabase.auth.getSession()
+          const accessToken = sessionData.session?.access_token
+          if (!accessToken) {
             toast({
               title: "Sessão expirada",
               description: "Faça login novamente para gerar mensagens.",
@@ -291,14 +291,18 @@ export default function LeadDetailPage() {
           }
           const results = await Promise.allSettled(
             campaignsToTrigger.map((campaign) =>
-              invokeGenerateMessages({ lead_id: id, campaign_id: campaign.id }, session.access_token),
+              invokeGenerateMessages({ lead_id: id, campaign_id: campaign.id }, accessToken),
             ),
           )
           const failed = results.find((result) => result.status === "rejected")
           if (failed) {
+            const message =
+              failed.status === "rejected" && failed.reason instanceof Error
+                ? failed.reason.message
+                : "Não foi possível gerar mensagens automaticamente."
             toast({
               title: "Aviso",
-              description: "Não foi possível gerar mensagens automaticamente.",
+              description: message,
               variant: "destructive",
             })
           }
@@ -373,7 +377,9 @@ export default function LeadDetailPage() {
 
     setGenerating(true)
     try {
-      if (!session?.access_token) {
+      const { data: sessionData } = await supabase.auth.getSession()
+      const accessToken = sessionData.session?.access_token
+      if (!accessToken) {
         toast({
           title: "Sessão expirada",
           description: "Faça login novamente para gerar mensagens.",
@@ -391,7 +397,7 @@ export default function LeadDetailPage() {
           setLead({ ...lead, campaign_ids: nextIds })
         }
       }
-      await invokeGenerateMessages({ lead_id: id, campaign_id: selectedCampaignId }, session.access_token)
+      await invokeGenerateMessages({ lead_id: id, campaign_id: selectedCampaignId }, accessToken)
 
       const { data: messagesData, error: messagesError } = await supabase
         .from("generated_messages")

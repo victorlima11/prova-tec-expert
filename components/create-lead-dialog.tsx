@@ -6,7 +6,6 @@ import { useState, useEffect } from "react"
 import { getSupabaseClient } from "@/lib/supabase/client"
 import { invokeGenerateMessages } from "@/lib/supabase/edge"
 import { useWorkspace } from "@/lib/workspace-context"
-import { useAuth } from "@/lib/auth-context"
 import type { Campaign, LeadCustomField, PipelineStage, WorkspaceMember } from "@/lib/types"
 import {
   Dialog,
@@ -52,7 +51,6 @@ export function CreateLeadDialog({ open, onOpenChange, onSuccess }: CreateLeadDi
   const [triggerCampaigns, setTriggerCampaigns] = useState<Campaign[]>([])
   const [loading, setLoading] = useState(false)
   const { currentWorkspaceId } = useWorkspace()
-  const { session } = useAuth()
   const { toast } = useToast()
   const supabase = getSupabaseClient()
 
@@ -274,7 +272,9 @@ export function CreateLeadDialog({ open, onOpenChange, onSuccess }: CreateLeadDi
           selectedCampaignIds.length > 0 ? selectedCampaignIds.includes(campaign.id) : true,
         )
         if (campaignsToTrigger.length > 0) {
-          if (!session?.access_token) {
+          const { data: sessionData } = await supabase.auth.getSession()
+          const accessToken = sessionData.session?.access_token
+          if (!accessToken) {
             toast({
               title: "Sessão expirada",
               description: "Faça login novamente para gerar mensagens.",
@@ -284,14 +284,18 @@ export function CreateLeadDialog({ open, onOpenChange, onSuccess }: CreateLeadDi
           }
           const results = await Promise.allSettled(
             campaignsToTrigger.map((campaign) =>
-              invokeGenerateMessages({ lead_id: data.id, campaign_id: campaign.id }, session.access_token),
+              invokeGenerateMessages({ lead_id: data.id, campaign_id: campaign.id }, accessToken),
             ),
           )
           const failed = results.find((result) => result.status === "rejected")
           if (failed) {
+            const message =
+              failed.status === "rejected" && failed.reason instanceof Error
+                ? failed.reason.message
+                : "Não foi possível gerar mensagens automaticamente."
             toast({
               title: "Aviso",
-              description: "Não foi possível gerar mensagens automaticamente.",
+              description: message,
               variant: "destructive",
             })
           }
