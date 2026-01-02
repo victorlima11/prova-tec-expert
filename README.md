@@ -2,6 +2,11 @@
 
 Mini CRM para equipes de SDR, focado em organizar o funil e facilitar a abordagem. O app permite criar campanhas com contexto e prompt, gerar mensagens com IA e mover leads entre etapas com regras de validação.
 
+## Links
+
+- Projeto em produção: prova-tec-expert.vercel.app
+- Vídeo demonstração/explicação: https://youtu.be/eUn2B4oYY9E
+
 ## Visão geral
 
 O fluxo principal foi pensado para ser simples e direto:
