@@ -28,7 +28,7 @@ export default function LeadDetailPage() {
   const [workspaceUsers, setWorkspaceUsers] = useState<WorkspaceMember[]>([])
   const [requiredFieldsByStage, setRequiredFieldsByStage] = useState<Record<string, string[]>>({})
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
-  const [selectedCampaignId, setSelectedCampaignId] = useState<string>("")
+  const [selectedCampaignId, setSelectedCampaignId] = useState<string>("none")
   const [generatedMessages, setGeneratedMessages] = useState<GeneratedMessage[]>([])
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
   const [editingContent, setEditingContent] = useState("")
@@ -53,6 +53,22 @@ export default function LeadDetailPage() {
     }
     fetchData()
   }, [id, currentWorkspaceId])
+
+  useEffect(() => {
+    if (!lead) return
+    const stageCampaigns = campaigns.filter(
+      (campaign) => !campaign.trigger_stage_id || campaign.trigger_stage_id === lead.stage_id,
+    )
+
+    if (selectedCampaignId !== "none" && !stageCampaigns.find((campaign) => campaign.id === selectedCampaignId)) {
+      setSelectedCampaignId(stageCampaigns[0]?.id ?? "none")
+      return
+    }
+
+    if (selectedCampaignId === "none" && stageCampaigns.length === 1) {
+      setSelectedCampaignId(stageCampaigns[0].id)
+    }
+  }, [lead, campaigns, selectedCampaignId])
 
   const fetchData = async () => {
     if (!currentWorkspaceId) return
@@ -130,10 +146,8 @@ export default function LeadDetailPage() {
         .order("created_at", { ascending: false })
 
       if (campaignsError) throw campaignsError
-      setCampaigns(campaignsData || [])
-      if (campaignsData?.length && !selectedCampaignId) {
-        setSelectedCampaignId(campaignsData[0].id)
-      }
+      const activeCampaigns = campaignsData || []
+      setCampaigns(activeCampaigns)
 
       const { data: messagesData, error: messagesError } = await supabase
         .from("generated_messages")
@@ -142,6 +156,15 @@ export default function LeadDetailPage() {
         .order("created_at", { ascending: false })
 
       if (messagesError) throw messagesError
+      const availableCampaigns = activeCampaigns.filter(
+        (campaign) => !campaign.trigger_stage_id || campaign.trigger_stage_id === leadData.stage_id,
+      )
+      const defaultCampaignId =
+        availableCampaigns.find((campaign) => campaign.trigger_stage_id === leadData.stage_id)?.id ||
+        availableCampaigns[0]?.id ||
+        "none"
+
+      setSelectedCampaignId(defaultCampaignId)
       setGeneratedMessages(messagesData || [])
     } catch (error: any) {
       toast({
@@ -198,7 +221,7 @@ export default function LeadDetailPage() {
 
         if (missing.length > 0) {
           toast({
-            title: "Campos obrigatorios faltando",
+            title: "Campos obrigatórios faltando",
             description: `Preencha: ${missing.join(", ")}`,
             variant: "destructive",
           })
@@ -297,7 +320,7 @@ export default function LeadDetailPage() {
 
   const handleGenerateMessages = async () => {
     if (!id) return
-    if (!selectedCampaignId) {
+    if (!selectedCampaignId || selectedCampaignId === "none") {
       toast({
         title: "Selecione uma campanha",
         description: "Escolha uma campanha ativa para gerar mensagens.",
@@ -474,6 +497,10 @@ export default function LeadDetailPage() {
     )
   }
 
+  const availableCampaigns = campaigns.filter(
+    (campaign) => !campaign.trigger_stage_id || campaign.trigger_stage_id === lead.stage_id,
+  )
+
   return (
     <div className="mx-auto max-w-4xl">
       <div className="mb-6 flex items-center justify-between">
@@ -634,7 +661,8 @@ export default function LeadDetailPage() {
                     <SelectValue placeholder="Selecione uma campanha" />
                   </SelectTrigger>
                   <SelectContent>
-                    {campaigns.map((campaign) => (
+                    <SelectItem value="none">Nenhuma</SelectItem>
+                    {availableCampaigns.map((campaign) => (
                       <SelectItem key={campaign.id} value={campaign.id}>
                         {campaign.name}
                       </SelectItem>
@@ -643,7 +671,11 @@ export default function LeadDetailPage() {
                 </Select>
               </div>
               <div className="flex gap-2">
-                <Button type="button" onClick={handleGenerateMessages} disabled={generating || !selectedCampaignId}>
+                <Button
+                  type="button"
+                  onClick={handleGenerateMessages}
+                  disabled={generating || selectedCampaignId === "none"}
+                >
                   {generating ? "Gerando..." : "Gerar mensagens"}
                 </Button>
                 <Button type="button" variant="outline" onClick={handleSendMessage} disabled={sending}>

@@ -16,9 +16,10 @@ const jsonResponse = (status: number, body: Record<string, unknown>) =>
 const loadConfig = () => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL")
   const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
+  const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")
   const geminiApiKey = Deno.env.get("GEMINI_API_KEY")
 
-  if (!supabaseUrl || !supabaseServiceKey) {
+  if (!supabaseUrl || (!supabaseServiceKey && !supabaseAnonKey)) {
     throw new Error("Missing Supabase service configuration")
   }
 
@@ -26,7 +27,7 @@ const loadConfig = () => {
     throw new Error("Missing Gemini API key")
   }
 
-  return { supabaseUrl, supabaseServiceKey, geminiApiKey }
+  return { supabaseUrl, supabaseKey: supabaseServiceKey || supabaseAnonKey, geminiApiKey }
 }
 
 const getBearerToken = (req: Request) => {
@@ -128,15 +129,20 @@ serve(async (req) => {
       return jsonResponse(400, { error: "lead_id and campaign_id are required" })
     }
 
-    const { supabaseUrl, supabaseServiceKey, geminiApiKey } = loadConfig()
+    const { supabaseUrl, supabaseKey, geminiApiKey } = loadConfig()
     const token = getBearerToken(req)
 
     if (!token) {
       return jsonResponse(401, { error: "Missing auth token" })
     }
 
-    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+    const supabase = createClient(supabaseUrl, supabaseKey, {
       auth: { persistSession: false },
+      global: {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
     })
 
     const { data: authData, error: authError } = await supabase.auth.getUser(token)
